@@ -1,0 +1,51 @@
+import React from 'react';
+import { useApp } from '../../context/AppContext';
+import { ClipboardList, CalendarCheck2, BarChart3, ShieldPlus } from 'lucide-react';
+
+const NAV = [
+  { id: 'plan', label: 'Plan', sub: 'Annual plan data entry', icon: ClipboardList },
+  { id: 'quarterly', label: 'Quarterly Report Entry', sub: 'Actuals & conversion', icon: CalendarCheck2 },
+  { id: 'report', label: 'Report', sub: 'Aggregated results', icon: BarChart3 },
+];
+
+export const Sidebar: React.FC = () => {
+  const { activeRoute, setActiveRoute } = useApp();
+
+  return (
+    <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen sticky top-0 shrink-0">
+      <div className="p-4 border-b border-slate-800 flex items-center gap-3">
+        <div className="w-11 h-11 rounded-full bg-white shrink-0 shadow-md flex items-center justify-center">
+          <ShieldPlus className="w-6 h-6 text-ercs-red" />
+        </div>
+        <div>
+          <div className="font-extrabold text-white text-sm tracking-wider uppercase">ERCS AoP</div>
+          <div className="text-[10px] text-slate-400 font-medium">Prototype Stage</div>
+        </div>
+      </div>
+
+      <div className="mx-3 my-3 p-2.5 rounded bg-slate-800/80 border border-slate-700/50 text-[10px] text-slate-400 leading-relaxed">
+        Follow the pipeline in order: enter the <b className="text-white">Plan</b>, report{' '}
+        <b className="text-white">Quarterly</b> actuals, then view the aggregated{' '}
+        <b className="text-white">Report</b>.
+      </div>
+
+      <nav className="flex-1 px-2 py-2 space-y-1 text-xs font-medium">
+        {NAV.map(({ id, label, sub, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveRoute(id)}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all text-left ${
+              activeRoute === id ? 'bg-ercs-red text-white font-bold' : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <Icon className="w-4 h-4 shrink-0" />
+            <div>
+              <div>{label}</div>
+              <div className={`text-[10px] font-normal ${activeRoute === id ? 'text-red-100' : 'text-slate-500'}`}>{sub}</div>
+            </div>
+          </button>
+        ))}
+      </nav>
+    </aside>
+  );
+};
