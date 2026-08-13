@@ -14,9 +14,12 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen sticky top-0 shrink-0">
       <div className="p-4 border-b border-slate-800 flex items-center gap-3">
-        <div className="w-11 h-11 rounded-full bg-white shrink-0 shadow-md flex items-center justify-center">
-          <ShieldPlus className="w-6 h-6 text-ercs-red" />
-        </div>
+      
+        <img
+  src="/ercs-logo.png"
+  alt="Ethiopian Red Cross Society"
+  className="w-11 h-11 rounded-full object-contain bg-white shrink-0 shadow-md p-0.5"
+/>
         <div>
           <div className="font-extrabold text-white text-sm tracking-wider uppercase">ERCS AoP</div>
           <div className="text-[10px] text-slate-400 font-medium">Prototype Stage</div>
