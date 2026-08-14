@@ -190,18 +190,31 @@ export const PlanPage: React.FC = () => {
   );
 };
 
-const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => (
-  <ModalShell title={form.id ? 'Edit National Activity' : 'Add National Activity'} onClose={onClose}>
-    <div className="grid grid-cols-2 gap-3">
-      <LabeledInput label="Code" value={form.code || ''} onChange={v => setForm((f: any) => ({ ...f, code: v }))} placeholder="Activity 1.1.3" />
-      <LabeledInput label="UOM" value={form.uom || ''} onChange={v => setForm((f: any) => ({ ...f, uom: v }))} placeholder="Person" />
-      <div className="col-span-2"><LabeledInput label="Description" value={form.description || ''} onChange={v => setForm((f: any) => ({ ...f, description: v }))} placeholder="What this activity delivers" /></div>
-      <LabeledInput label="Annual Target" type="number" value={String(form.annual_target ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_target: v }))} />
-      <LabeledInput label="Annual Budget (ETB)" type="number" value={String(form.annual_budget ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_budget: v }))} />
-    </div>
-    <button onClick={onSave} className="mt-4 w-full bg-ercs-red text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-2"><Save className="w-3.5 h-3.5" /> Save</button>
-  </ModalShell>
-);
+const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
+  const { uomConfigs } = useApp();
+  return (
+    <ModalShell title={form.id ? 'Edit National Activity' : 'Add National Activity'} onClose={onClose}>
+      <div className="grid grid-cols-2 gap-3">
+        <LabeledInput label="Code" value={form.code || ''} onChange={v => setForm((f: any) => ({ ...f, code: v }))} placeholder="Activity 1.1.3" />
+        <div>
+          <span className="block text-[10px] font-bold text-slate-500 mb-1">UOM</span>
+          <select
+            value={form.uom || ''}
+            onChange={e => setForm((f: any) => ({ ...f, uom: e.target.value }))}
+            className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-100"
+          >
+            <option value="">Select UOM…</option>
+            {uomConfigs.map(cfg => <option key={cfg.uom} value={cfg.uom}>{cfg.uom}</option>)}
+          </select>
+        </div>
+        <div className="col-span-2"><LabeledInput label="Description" value={form.description || ''} onChange={v => setForm((f: any) => ({ ...f, description: v }))} placeholder="What this activity delivers" /></div>
+        <LabeledInput label="Annual Target" type="number" value={String(form.annual_target ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_target: v }))} />
+        <LabeledInput label="Annual Budget (ETB)" type="number" value={String(form.annual_budget ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_budget: v }))} />
+      </div>
+      <button onClick={onSave} className="mt-4 w-full bg-ercs-red text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-2"><Save className="w-3.5 h-3.5" /> Save</button>
+    </ModalShell>
+  );
+};
 
 const PlanEntryModal: React.FC<{ form: Partial<PlanEntry>; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
   const { nationalActivities, regions, projects } = useApp();
