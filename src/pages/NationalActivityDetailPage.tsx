@@ -1,3 +1,4 @@
+// src/pages/NationalActivityDetailPage.tsx
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import {
@@ -8,7 +9,7 @@ import { ArrowLeft, Layers, Building2, FolderGit2, Plus, Target, Wallet, Users }
 
 export const NationalActivityDetailPage: React.FC = () => {
   const {
-    selectedNationalActivityId, setActiveRoute, setFilters,
+    selectedNationalActivityId, setActiveRoute, setFilters, setPendingAddPlanNationalActivityId,
     strategicPriorities, nationalActivities, regions, zones, projects,
     planEntries, quarterlyActuals, uomConfigs,
   } = useApp();
@@ -60,11 +61,14 @@ export const NationalActivityDetailPage: React.FC = () => {
     setActiveRoute('quarterly');
   };
 
-  // "+ Add Plan Entry" here hands off to the Plan page's existing Add flow,
-  // pre-filtered to this National Activity so the new entry is linked
-  // automatically — same mechanism the Plan page already uses.
+  // "+ Add Plan Entry" here hands off to the Plan page's Add Plan wizard,
+  // pre-linked to THIS National Activity and opened directly at the
+  // execution-details step — not just a filtered navigate that still needs
+  // a second manual click. setPendingAddPlanNationalActivityId is consumed
+  // by PlanPage on mount (see its useEffect) and cleared immediately after.
   const addLinkedEntry = () => {
     setFilters(prev => ({ ...prev, nationalActivityId: na.id }));
+    setPendingAddPlanNationalActivityId(na.id);
     setActiveRoute('plan');
   };
 

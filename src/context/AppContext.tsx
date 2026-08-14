@@ -16,6 +16,16 @@ interface AppContextType {
   // Which National Activity is being viewed on the drill-down detail page.
   selectedNationalActivityId: string | null; setSelectedNationalActivityId: (id: string | null) => void;
 
+  // One-shot signal: "the user wants to add a Plan Entry linked to this
+  // National Activity right now." Set by NationalActivityDetailPage's
+  // "+ Add Plan Entry" button before it navigates to the Plan page; consumed
+  // and cleared by PlanPage on mount, which opens the Add Plan wizard
+  // directly at Step 2 with the parent already locked in. This is what makes
+  // that button an actual one-click "add and link" action instead of just a
+  // navigate + filter that still requires a second manual click.
+  pendingAddPlanNationalActivityId: string | null;
+  setPendingAddPlanNationalActivityId: (id: string | null) => void;
+
   strategicPriorities: StrategicPriority[];
 
   nationalActivities: NationalActivity[];
@@ -69,6 +79,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeRoute, setActiveRoute] = useState<string>(() => readPersisted('activeRoute', 'plan'));
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedNationalActivityId, setSelectedNationalActivityId] = useState<string | null>(() => readPersisted('selectedNationalActivityId', null));
+  // Deliberately NOT persisted — this is a transient one-shot UI signal, not
+  // durable app data. A stale value surviving a page reload would incorrectly
+  // pop the wizard open on next visit to the Plan page.
+  const [pendingAddPlanNationalActivityId, setPendingAddPlanNationalActivityId] = useState<string | null>(null);
 
   const [strategicPriorities] = useState<StrategicPriority[]>(INITIAL_STRATEGIC_PRIORITIES);
   const [nationalActivities, setNationalActivities] = useState<NationalActivity[]>(() => readPersisted('nationalActivities', INITIAL_NATIONAL_ACTIVITIES));
@@ -196,6 +210,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider value={{
       activeRoute, setActiveRoute, toastMessage, showToast,
       selectedNationalActivityId, setSelectedNationalActivityId,
+      pendingAddPlanNationalActivityId, setPendingAddPlanNationalActivityId,
       strategicPriorities,
       nationalActivities, addNationalActivity, updateNationalActivity, deleteNationalActivity,
       regions, addRegion,

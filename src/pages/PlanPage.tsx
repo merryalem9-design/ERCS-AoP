@@ -1,5 +1,5 @@
 // src/pages/PlanPage.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
 import { sumTarget, sumBudget } from '../utils/calculations';
@@ -28,6 +28,7 @@ export const PlanPage: React.FC = () => {
     regions, zones, projects, planEntries, deletePlanEntry,
     uomConfigs, filters, getFilteredPlanEntries,
     setSelectedNationalActivityId, setActiveRoute,
+    pendingAddPlanNationalActivityId, setPendingAddPlanNationalActivityId,
   } = useApp();
 
   const [naForm, setNaForm] = useState<null | Partial<NationalActivity>>(null);
@@ -35,6 +36,33 @@ export const PlanPage: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<null | { type: 'na' | 'pe'; id: string; label: string }>(null);
 
   const filteredEntries = getFilteredPlanEntries();
+
+  // Consumes the one-shot "open the Add Plan wizard for this National
+  // Activity" signal set by NationalActivityDetailPage's "+ Add Plan Entry"
+  // button. Fires on mount (since App.tsx swaps pages by unmount/remount,
+  // this always runs when the person arrives here via that button) and
+  // whenever the signal changes. Opens straight at Step 2 with the parent
+  // already locked in, then clears the signal so it never re-fires.
+  useEffect(() => {
+    if (!pendingAddPlanNationalActivityId) return;
+    const na = nationalActivities.find(n => n.id === pendingAddPlanNationalActivityId);
+    if (na) {
+      setPeWizard({
+        initial: {
+          strategicPriorityId: na.strategic_priority_id,
+          national_activity_id: na.id,
+          scope_type: 'Regional',
+          region_id: '',
+          project_id: '',
+          annual_target: '',
+          annual_budget: '',
+        },
+        startStep: 2,
+      });
+    }
+    setPendingAddPlanNationalActivityId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAddPlanNationalActivityId]);
 
   // Which National Activities to show reconciliation + entries for, based on the
   // Strategic Priority and National Activity filters at the top.
@@ -57,6 +85,8 @@ export const PlanPage: React.FC = () => {
     // whatever stale value might still be sitting in the form state.
     const linkedChildren = naForm.id ? planEntries.filter(pe => pe.national_activity_id === naForm.id) : [];
     const hasChildren = linkedChildren.length > 0;
+    const manualTarget = Number(naForm.annual_target);
+    const manualBudget = Number(naForm.annual_budget);
     const na: NationalActivity = {
       id: naForm.id || `na-${Date.now()}`,
       strategic_priority_id: naForm.strategic_priority_id || '',
@@ -66,8 +96,8 @@ export const PlanPage: React.FC = () => {
       responsibility: (naForm.responsibility as Responsibility) || 'HQ',
       region_id: naForm.region_id || undefined,
       zone_id: naForm.zone_id || undefined,
-      annual_target: hasChildren ? sumTarget(linkedChildren) : (Number(naForm.annual_target) || 0),
-      annual_budget: hasChildren ? sumBudget(linkedChildren) : (Number(naForm.annual_budget) || 0),
+      annual_target: hasChildren ? sumTarget(linkedChildren) : (Number.isFinite(manualTarget) && manualTarget >= 0 ? manualTarget : 0),
+      annual_budget: hasChildren ? sumBudget(linkedChildren) : (Number.isFinite(manualBudget) && manualBudget >= 0 ? manualBudget : 0),
     };
     if (!na.code || !na.description || !na.uom || !na.strategic_priority_id) return;
     if (naForm.id) updateNationalActivity(na); else addNationalActivity(na);
@@ -292,6 +322,30 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
   const computedTarget = sumTarget(linkedChildren);
   const computedBudget = sumBudget(linkedChildren);
 
+  // Required-field + non-negative-number guards. Previously Save just
+  // silently no-op'd on missing fields with no explanation, and manual
+  // Target/Budget accepted negative numbers (min="0" on <input> is only a
+  // UI hint, not an enforced constraint) which would corrupt every
+  // downstream aggregate. Both are now caught and explained before Save.
+  const requiredMissing =
+    !(form.code || '').trim() ||
+    !(form.description || '').trim() ||
+    !(form.uom || '').trim() ||
+    !form.strategic_priority_id;
+
+  const manualTargetRaw = form.annual_target;
+  const manualBudgetRaw = form.annual_budget;
+  const manualTargetNum = Number(manualTargetRaw);
+  const manualBudgetNum = Number(manualBudgetRaw);
+  const manualNumbersInvalid =
+    !hasChildren &&
+    (
+      (manualTargetRaw !== undefined && manualTargetRaw !== ('' as any) && (Number.isNaN(manualTargetNum) || manualTargetNum < 0)) ||
+      (manualBudgetRaw !== undefined && manualBudgetRaw !== ('' as any) && (Number.isNaN(manualBudgetNum) || manualBudgetNum < 0))
+    );
+
+  const saveDisabled = requiredMissing || manualNumbersInvalid;
+
   const handleAddRegion = () => {
     const name = newRegionName.trim();
     if (!name) return;
@@ -434,7 +488,19 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
           )}
         </div>
       </div>
-      <button onClick={onSave} className="mt-4 w-full bg-ercs-red text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-2"><Save className="w-3.5 h-3.5" /> Save</button>
+
+      {requiredMissing && (
+        <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11px] text-amber-800 font-semibold">
+          Strategic Priority, Code, Description and UoM are all required before saving.
+        </div>
+      )}
+      {manualNumbersInvalid && (
+        <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
+          Annual Target and Annual Budget must be zero or greater.
+        </div>
+      )}
+
+      <button onClick={onSave} disabled={saveDisabled} className="mt-4 w-full bg-ercs-red text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"><Save className="w-3.5 h-3.5" /> Save</button>
     </ModalShell>
   );
 };
@@ -476,11 +542,32 @@ const PlanEntryWizardModal: React.FC<{
   const projectedTarget = siblingTarget + thisTarget;
   const projectedBudget = siblingBudget + thisBudget;
 
+  // Guard 1: Annual Target / Annual Budget must be zero or greater. The
+  // number inputs' min="0" is only a UI hint, not an enforced constraint —
+  // without this check a negative value would silently corrupt every
+  // downstream sum (National Activity totals, Report page aggregates).
+  const numbersValid = thisTarget >= 0 && thisBudget >= 0;
+
+  // Guard 2: prevent two Plan Entries linking the same Region/Project to the
+  // same National Activity. Without this, both entries' targets/budgets get
+  // summed into the parent, silently double-counting that Region/Project's
+  // contribution everywhere (National Activity card, Detail page, Report page).
+  const isDuplicateLink = !!selectedNa && !!form.scope_type && planEntries.some(pe =>
+    pe.id !== form.id &&
+    pe.national_activity_id === selectedNa.id &&
+    pe.scope_type === form.scope_type &&
+    (form.scope_type === 'Regional'
+      ? (!!form.region_id && pe.region_id === form.region_id)
+      : (!!form.project_id && pe.project_id === form.project_id))
+  );
+
   const canContinue = !!form.national_activity_id;
   const canSave =
     !!form.national_activity_id &&
     !!form.scope_type &&
-    (form.scope_type === 'Regional' ? !!form.region_id : !!form.project_id);
+    (form.scope_type === 'Regional' ? !!form.region_id : !!form.project_id) &&
+    numbersValid &&
+    !isDuplicateLink;
 
   const handleSave = () => {
     if (!canSave) return;
@@ -536,6 +623,12 @@ const PlanEntryWizardModal: React.FC<{
             </select>
             {isEditing && <div className="text-[10px] text-slate-400 mt-1">The parent link is fixed while editing an existing entry.</div>}
           </div>
+
+          {naOptions.length === 0 && (
+            <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 font-semibold">
+              No National Activities exist yet in this scope. Close this wizard and create one first via "+ Add National Activity".
+            </div>
+          )}
 
           {selectedNa && (
             <div className="bg-slate-50 border rounded-lg p-3 space-y-2">
@@ -602,6 +695,17 @@ const PlanEntryWizardModal: React.FC<{
             <LabeledInput label={`Annual Target (${selectedNa.uom})`} type="number" value={form.annual_target} onChange={v => setForm(f => ({ ...f, annual_target: v }))} />
             <LabeledInput label="Annual Budget (ETB)" type="number" value={form.annual_budget} onChange={v => setForm(f => ({ ...f, annual_budget: v }))} />
           </div>
+
+          {isDuplicateLink && (
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-[11px] text-rose-700 font-semibold">
+              This {form.scope_type === 'Regional' ? 'Region' : 'Project'} is already linked to {selectedNa.code}. Pick a different {form.scope_type === 'Regional' ? 'Region' : 'Project'}, or close this wizard and edit the existing entry instead — two entries for the same {form.scope_type === 'Regional' ? 'Region' : 'Project'} would double-count its contribution.
+            </div>
+          )}
+          {!numbersValid && (
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-[11px] text-rose-700 font-semibold">
+              Annual Target and Annual Budget must be zero or greater.
+            </div>
+          )}
 
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-[11px] text-blue-800 font-semibold space-y-1">
             <div>Saving will automatically update <b>{selectedNa.code}</b>'s official Target &amp; Budget to match all linked Plan Entries.</div>
