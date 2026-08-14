@@ -1,23 +1,37 @@
+// src/pages/PlanPage.tsx
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
 import { sumTarget, sumBudget } from '../utils/calculations';
 import { NationalActivity, PlanEntry, ScopeType, Region, Zone, Responsibility } from '../types';
-import { AlertTriangle, ArrowUpRight, CheckCircle2, Layers, Plus, Save, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, CheckCircle2, ChevronRight, Layers, Plus, Save, Trash2, X } from 'lucide-react';
 
 const RESPONSIBILITY_OPTIONS: Responsibility[] = ['HQ', 'Branch', 'Both'];
+
+// Form shape used by the Add Plan wizard. Kept as strings for controlled
+// number inputs; converted to numbers only when the PlanEntry is built.
+interface PeWizardFormState {
+  id?: string;
+  strategicPriorityId: string;
+  national_activity_id: string;
+  scope_type: ScopeType;
+  region_id: string;
+  project_id: string;
+  annual_target: string;
+  annual_budget: string;
+}
 
 export const PlanPage: React.FC = () => {
   const {
     strategicPriorities,
     nationalActivities, addNationalActivity, updateNationalActivity, deleteNationalActivity,
-    regions, zones, projects, planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry,
+    regions, zones, projects, planEntries, deletePlanEntry,
     uomConfigs, filters, getFilteredPlanEntries,
     setSelectedNationalActivityId, setActiveRoute,
   } = useApp();
 
   const [naForm, setNaForm] = useState<null | Partial<NationalActivity>>(null);
-  const [peForm, setPeForm] = useState<null | Partial<PlanEntry>>(null);
+  const [peWizard, setPeWizard] = useState<null | { initial: PeWizardFormState; startStep: 1 | 2 }>(null);
   const [deleteTarget, setDeleteTarget] = useState<null | { type: 'na' | 'pe'; id: string; label: string }>(null);
 
   const filteredEntries = getFilteredPlanEntries();
@@ -37,6 +51,12 @@ export const PlanPage: React.FC = () => {
 
   const saveNa = () => {
     if (!naForm) return;
+    // Once a National Activity has linked Plan Entries, its official Target
+    // and Budget are owned by those entries (see AppContext), not by this
+    // form — so we always write back the computed sum here rather than
+    // whatever stale value might still be sitting in the form state.
+    const linkedChildren = naForm.id ? planEntries.filter(pe => pe.national_activity_id === naForm.id) : [];
+    const hasChildren = linkedChildren.length > 0;
     const na: NationalActivity = {
       id: naForm.id || `na-${Date.now()}`,
       strategic_priority_id: naForm.strategic_priority_id || '',
@@ -46,29 +66,46 @@ export const PlanPage: React.FC = () => {
       responsibility: (naForm.responsibility as Responsibility) || 'HQ',
       region_id: naForm.region_id || undefined,
       zone_id: naForm.zone_id || undefined,
-      annual_target: Number(naForm.annual_target) || 0,
-      annual_budget: Number(naForm.annual_budget) || 0,
+      annual_target: hasChildren ? sumTarget(linkedChildren) : (Number(naForm.annual_target) || 0),
+      annual_budget: hasChildren ? sumBudget(linkedChildren) : (Number(naForm.annual_budget) || 0),
     };
     if (!na.code || !na.description || !na.uom || !na.strategic_priority_id) return;
     if (naForm.id) updateNationalActivity(na); else addNationalActivity(na);
     setNaForm(null);
   };
 
-  const savePe = () => {
-    if (!peForm || !peForm.national_activity_id || !peForm.scope_type) return;
-    if (peForm.scope_type === 'Regional' && !peForm.region_id) return;
-    if (peForm.scope_type === 'Project' && !peForm.project_id) return;
-    const pe: PlanEntry = {
-      id: peForm.id || `pe-${Date.now()}`,
-      national_activity_id: peForm.national_activity_id,
-      scope_type: peForm.scope_type,
-      region_id: peForm.scope_type === 'Regional' ? peForm.region_id : undefined,
-      project_id: peForm.scope_type === 'Project' ? peForm.project_id : undefined,
-      annual_target: Number(peForm.annual_target) || 0,
-      annual_budget: Number(peForm.annual_budget) || 0,
-    };
-    if (peForm.id) updatePlanEntry(pe); else addPlanEntry(pe);
-    setPeForm(null);
+  const openAddPlanWizard = () => {
+    const naId = filters.nationalActivityId !== 'ALL' ? filters.nationalActivityId : (nationalActivities[0]?.id || '');
+    const na = nationalActivities.find(n => n.id === naId);
+    setPeWizard({
+      initial: {
+        strategicPriorityId: na?.strategic_priority_id || (filters.strategicPriorityId !== 'ALL' ? filters.strategicPriorityId : ''),
+        national_activity_id: naId,
+        scope_type: 'Regional',
+        region_id: '',
+        project_id: '',
+        annual_target: '',
+        annual_budget: '',
+      },
+      startStep: 1,
+    });
+  };
+
+  const openEditPlanWizard = (pe: PlanEntry) => {
+    const na = nationalActivities.find(n => n.id === pe.national_activity_id);
+    setPeWizard({
+      initial: {
+        id: pe.id,
+        strategicPriorityId: na?.strategic_priority_id || '',
+        national_activity_id: pe.national_activity_id,
+        scope_type: pe.scope_type,
+        region_id: pe.region_id || '',
+        project_id: pe.project_id || '',
+        annual_target: String(pe.annual_target),
+        annual_budget: String(pe.annual_budget),
+      },
+      startStep: 2,
+    });
   };
 
   return (
@@ -80,7 +117,7 @@ export const PlanPage: React.FC = () => {
         </p>
       </div>
 
-<FilterBar showQuarter={false} />
+      <FilterBar showQuarter={false} />
 
       {/* National Activities */}
       <section className="bg-white rounded-xl border shadow-sm overflow-hidden">
@@ -130,6 +167,7 @@ export const PlanPage: React.FC = () => {
                     )}
                     <div className="text-xs text-slate-500 mt-1">
                       Official Target: <b>{na.annual_target.toLocaleString()} {na.uom}</b> · Official Budget: <b>ETB {na.annual_budget.toLocaleString()}</b>
+                      {children.length > 0 && <span className="text-slate-400"> (auto-synced from {children.length} linked entries)</span>}
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
@@ -179,8 +217,8 @@ export const PlanPage: React.FC = () => {
       <section className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <div className="p-4 border-b flex items-center justify-between bg-slate-50">
           <div className="text-xs font-bold text-slate-800 uppercase tracking-wider">Execution Plan Entries ({filteredEntries.length})</div>
-          <button onClick={() => setPeForm({ scope_type: 'Regional', national_activity_id: filters.nationalActivityId !== 'ALL' ? filters.nationalActivityId : nationalActivities[0]?.id })} className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-            <Plus className="w-3.5 h-3.5" /> Add Plan Entry
+          <button onClick={openAddPlanWizard} className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+            <Plus className="w-3.5 h-3.5" /> Add Plan
           </button>
         </div>
         <table className="w-full text-left text-xs">
@@ -200,7 +238,7 @@ export const PlanPage: React.FC = () => {
                   <td className="p-3 text-right">{pe.annual_budget.toLocaleString()}</td>
                   <td className="p-3">
                     <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => setPeForm(pe)} className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-bold">Edit</button>
+                      <button onClick={() => openEditPlanWizard(pe)} className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-bold">Edit</button>
                       <button onClick={() => setDeleteTarget({ type: 'pe', id: pe.id, label: `${na?.code} / ${scopeName}` })} className="px-2.5 py-1 rounded bg-red-50 text-red-700 font-bold"><Trash2 className="w-3 h-3" /></button>
                     </div>
                   </td>
@@ -213,7 +251,14 @@ export const PlanPage: React.FC = () => {
       </section>
 
       {naForm && <NationalActivityModal form={naForm} setForm={setNaForm} onSave={saveNa} onClose={() => setNaForm(null)} />}
-      {peForm && <PlanEntryModal form={peForm} setForm={setPeForm} onSave={savePe} onClose={() => setPeForm(null)} />}
+      {peWizard && (
+        <PlanEntryWizardModal
+          initial={peWizard.initial}
+          startStep={peWizard.startStep}
+          onClose={() => setPeWizard(null)}
+          onSaved={() => setPeWizard(null)}
+        />
+      )}
       {deleteTarget && (
         <ConfirmDeleteModal
           label={deleteTarget.label}
@@ -228,15 +273,8 @@ export const PlanPage: React.FC = () => {
   );
 };
 
-// Thin wrapper so this file doesn't need a second import line duplicated —
-// keeps the existing FilterBar exactly as-is.
-/*const FilterBarWrapper: React.FC = () => {
-  const { FilterBar } = require('../components/common/FilterBar');
-  return <FilterBar showQuarter={false} />;
-};*/
-
 const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
-  const { uomConfigs, strategicPriorities, regions, zones, addRegion, addZone } = useApp();
+  const { uomConfigs, strategicPriorities, regions, zones, addRegion, addZone, planEntries } = useApp();
 
   const [addingRegion, setAddingRegion] = useState(false);
   const [newRegionName, setNewRegionName] = useState('');
@@ -244,6 +282,15 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
   const [newZoneName, setNewZoneName] = useState('');
 
   const zonesInScope = form.region_id ? zones.filter(z => z.region_id === form.region_id) : [];
+
+  // Once this National Activity has linked Plan Entries, Target/Budget are
+  // derived live from those entries (see AppContext.syncNationalActivityTotals)
+  // and shown read-only here — editing them directly would just be silently
+  // overwritten the next time a Plan Entry changes, which is confusing.
+  const linkedChildren = form.id ? planEntries.filter(pe => pe.national_activity_id === form.id) : [];
+  const hasChildren = linkedChildren.length > 0;
+  const computedTarget = sumTarget(linkedChildren);
+  const computedBudget = sumBudget(linkedChildren);
 
   const handleAddRegion = () => {
     const name = newRegionName.trim();
@@ -305,8 +352,25 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
           </select>
         </div>
 
-        <LabeledInput label="Annual Target" type="number" value={String(form.annual_target ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_target: v }))} />
-        <LabeledInput label="Annual Budget (ETB)" type="number" value={String(form.annual_budget ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_budget: v }))} />
+        {hasChildren ? (
+          <>
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 mb-1">Annual Target (auto-synced)</span>
+              <div className="w-full text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded p-2">{computedTarget.toLocaleString()} {form.uom || ''}</div>
+              <div className="text-[10px] text-slate-400 mt-1">Derived live from {linkedChildren.length} linked Plan Entries.</div>
+            </div>
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 mb-1">Annual Budget (auto-synced)</span>
+              <div className="w-full text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded p-2">ETB {computedBudget.toLocaleString()}</div>
+              <div className="text-[10px] text-slate-400 mt-1">Derived live from {linkedChildren.length} linked Plan Entries.</div>
+            </div>
+          </>
+        ) : (
+          <>
+            <LabeledInput label="Annual Target" type="number" value={String(form.annual_target ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_target: v }))} />
+            <LabeledInput label="Annual Budget (ETB)" type="number" value={String(form.annual_budget ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_budget: v }))} />
+          </>
+        )}
 
         {/* Region */}
         <div>
@@ -375,51 +439,194 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
   );
 };
 
-const PlanEntryModal: React.FC<{ form: Partial<PlanEntry>; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
-  const { nationalActivities, regions, projects } = useApp();
+// ---------------------------------------------------------------------------
+// ADD PLAN WIZARD
+// Step 1 makes the parent link explicit: Strategic Priority -> National
+// Activity, with a live breadcrumb preview and current linked-entry count.
+// Step 2 captures execution details and previews exactly what the National
+// Activity's official Target/Budget will become once saved (they always
+// will, per AppContext.addPlanEntry / updatePlanEntry).
+// ---------------------------------------------------------------------------
+const PlanEntryWizardModal: React.FC<{
+  initial: PeWizardFormState;
+  startStep: 1 | 2;
+  onClose: () => void;
+  onSaved: () => void;
+}> = ({ initial, startStep, onClose, onSaved }) => {
+  const { strategicPriorities, nationalActivities, regions, projects, planEntries, addPlanEntry, updatePlanEntry } = useApp();
+  const [step, setStep] = useState<1 | 2>(startStep);
+  const [form, setForm] = useState<PeWizardFormState>(initial);
+
+  const isEditing = !!form.id;
+
+  const naOptions = form.strategicPriorityId
+    ? nationalActivities.filter(na => na.strategic_priority_id === form.strategicPriorityId)
+    : nationalActivities;
+
+  const selectedNa = nationalActivities.find(na => na.id === form.national_activity_id);
+  const spOfSelectedNa = selectedNa ? strategicPriorities.find(sp => sp.id === selectedNa.strategic_priority_id) : undefined;
+
+  // Every OTHER entry already linked to this National Activity (excluding
+  // the one being edited), used to preview the projected parent totals.
+  const siblingEntries = selectedNa ? planEntries.filter(pe => pe.national_activity_id === selectedNa.id && pe.id !== form.id) : [];
+  const siblingTarget = sumTarget(siblingEntries);
+  const siblingBudget = sumBudget(siblingEntries);
+  const thisTarget = Number(form.annual_target) || 0;
+  const thisBudget = Number(form.annual_budget) || 0;
+  const projectedTarget = siblingTarget + thisTarget;
+  const projectedBudget = siblingBudget + thisBudget;
+
+  const canContinue = !!form.national_activity_id;
+  const canSave =
+    !!form.national_activity_id &&
+    !!form.scope_type &&
+    (form.scope_type === 'Regional' ? !!form.region_id : !!form.project_id);
+
+  const handleSave = () => {
+    if (!canSave) return;
+    const pe: PlanEntry = {
+      id: form.id || `pe-${Date.now()}`,
+      national_activity_id: form.national_activity_id,
+      scope_type: form.scope_type,
+      region_id: form.scope_type === 'Regional' ? form.region_id : undefined,
+      project_id: form.scope_type === 'Project' ? form.project_id : undefined,
+      annual_target: thisTarget,
+      annual_budget: thisBudget,
+    };
+    if (isEditing) updatePlanEntry(pe); else addPlanEntry(pe);
+    onSaved();
+  };
+
   return (
-    <ModalShell title={form.id ? 'Edit Plan Entry' : 'Add Plan Entry'} onClose={onClose}>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">
-          <span className="block text-[10px] font-bold text-slate-500 mb-1">National Activity</span>
-          <select value={form.national_activity_id || ''} onChange={e => setForm((f: any) => ({ ...f, national_activity_id: e.target.value }))} className="w-full text-xs border rounded p-2 bg-slate-50">
-            <option value="">Select…</option>
-            {nationalActivities.map(na => <option key={na.id} value={na.id}>{na.code} — {na.description}</option>)}
-          </select>
-        </div>
-        <div className="col-span-2">
-          <span className="block text-[10px] font-bold text-slate-500 mb-1">Executed By</span>
-          <div className="flex gap-2">
-            {(['Regional', 'Project'] as ScopeType[]).map(st => (
-              <button key={st} type="button" onClick={() => setForm((f: any) => ({ ...f, scope_type: st, region_id: undefined, project_id: undefined }))} className={`flex-1 py-2 rounded text-xs font-bold border ${form.scope_type === st ? 'bg-ercs-red text-white border-ercs-red' : 'bg-slate-50 text-slate-600'}`}>{st}</button>
-            ))}
-          </div>
-        </div>
-        {form.scope_type === 'Regional' && (
-          <div className="col-span-2">
-            <span className="block text-[10px] font-bold text-slate-500 mb-1">Region</span>
-            <select value={form.region_id || ''} onChange={e => setForm((f: any) => ({ ...f, region_id: e.target.value }))} className="w-full text-xs border rounded p-2 bg-slate-50">
-              <option value="">Select region…</option>
-              {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-          </div>
-        )}
-        {form.scope_type === 'Project' && (
-          <div className="col-span-2">
-            <span className="block text-[10px] font-bold text-slate-500 mb-1">Project</span>
-            <select value={form.project_id || ''} onChange={e => setForm((f: any) => ({ ...f, project_id: e.target.value }))} className="w-full text-xs border rounded p-2 bg-slate-50">
-              <option value="">Select project…</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-        )}
-        <LabeledInput label="Annual Target" type="number" value={String(form.annual_target ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_target: v }))} />
-        <LabeledInput label="Annual Budget (ETB)" type="number" value={String(form.annual_budget ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_budget: v }))} />
+    <ModalShell title={isEditing ? 'Edit Plan Entry' : 'Add Plan — Link to National Activity'} onClose={onClose}>
+      <div className="flex items-center gap-2 mb-4">
+        <StepPill num={1} label="Link to Parent" active={step === 1} done={step > 1} />
+        <div className="flex-1 h-px bg-slate-200" />
+        <StepPill num={2} label="Execution Details" active={step === 2} done={false} />
       </div>
-      <button onClick={onSave} className="mt-4 w-full bg-ercs-red text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-2"><Save className="w-3.5 h-3.5" /> Save</button>
+
+      {step === 1 && (
+        <div className="space-y-4">
+          <div>
+            <span className="block text-[10px] font-bold text-slate-500 mb-1">Strategic Priority</span>
+            <select
+              value={form.strategicPriorityId}
+              onChange={e => {
+                const spId = e.target.value;
+                const stillValid = nationalActivities.find(na => na.id === form.national_activity_id)?.strategic_priority_id === spId;
+                setForm(f => ({ ...f, strategicPriorityId: spId, national_activity_id: stillValid ? f.national_activity_id : '' }));
+              }}
+              disabled={isEditing}
+              className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 disabled:opacity-60"
+            >
+              <option value="">All Strategic Priorities</option>
+              {strategicPriorities.map(sp => <option key={sp.id} value={sp.id}>{sp.code} — {sp.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-slate-500 mb-1">National Activity (Parent)</span>
+            <select
+              value={form.national_activity_id}
+              onChange={e => setForm(f => ({ ...f, national_activity_id: e.target.value }))}
+              disabled={isEditing}
+              className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 disabled:opacity-60"
+            >
+              <option value="">Select the National Activity this plan entry belongs to…</option>
+              {naOptions.map(na => <option key={na.id} value={na.id}>{na.code} — {na.description}</option>)}
+            </select>
+            {isEditing && <div className="text-[10px] text-slate-400 mt-1">The parent link is fixed while editing an existing entry.</div>}
+          </div>
+
+          {selectedNa && (
+            <div className="bg-slate-50 border rounded-lg p-3 space-y-2">
+              <div className="text-[10px] uppercase font-extrabold text-slate-400">Link Preview</div>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                <span className="bg-white border rounded px-2 py-1">{spOfSelectedNa?.code || 'Strategic Priority'}</span>
+                <ChevronRight className="w-3 h-3 text-slate-300" />
+                <span className="bg-red-50 text-ercs-red border border-red-100 rounded px-2 py-1">{selectedNa.code}</span>
+                <ChevronRight className="w-3 h-3 text-slate-300" />
+                <span className="bg-blue-50 text-blue-700 rounded px-2 py-1">{isEditing ? 'This Plan Entry' : 'New Plan Entry'}</span>
+              </div>
+              <div className="text-[10px] text-slate-500">
+                Official Target: <b>{selectedNa.annual_target.toLocaleString()} {selectedNa.uom}</b> · Official Budget: <b>ETB {selectedNa.annual_budget.toLocaleString()}</b> · Linked entries: <b>{planEntries.filter(pe => pe.national_activity_id === selectedNa.id).length}</b>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button disabled={!canContinue} onClick={() => setStep(2)} className="bg-ercs-red text-white px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-40">
+              Continue to Execution Details
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && selectedNa && (
+        <div className="space-y-4">
+          <div>
+            <span className="block text-[10px] font-bold text-slate-500 mb-1">Executed By</span>
+            <div className="flex gap-2">
+              {(['Regional', 'Project'] as ScopeType[]).map(st => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, scope_type: st, region_id: '', project_id: '' }))}
+                  className={`flex-1 py-2 rounded text-xs font-bold border ${form.scope_type === st ? 'bg-ercs-red text-white border-ercs-red' : 'bg-slate-50 text-slate-600'}`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {form.scope_type === 'Regional' && (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 mb-1">Region</span>
+              <select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id: e.target.value }))} className="w-full text-xs border rounded p-2 bg-slate-50">
+                <option value="">Select region…</option>
+                {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
+          )}
+          {form.scope_type === 'Project' && (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 mb-1">Project</span>
+              <select value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))} className="w-full text-xs border rounded p-2 bg-slate-50">
+                <option value="">Select project…</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <LabeledInput label={`Annual Target (${selectedNa.uom})`} type="number" value={form.annual_target} onChange={v => setForm(f => ({ ...f, annual_target: v }))} />
+            <LabeledInput label="Annual Budget (ETB)" type="number" value={form.annual_budget} onChange={v => setForm(f => ({ ...f, annual_budget: v }))} />
+          </div>
+
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-[11px] text-blue-800 font-semibold space-y-1">
+            <div>Saving will automatically update <b>{selectedNa.code}</b>'s official Target &amp; Budget to match all linked Plan Entries.</div>
+            <div>Projected National Activity Target: <b>{projectedTarget.toLocaleString()} {selectedNa.uom}</b> (currently {selectedNa.annual_target.toLocaleString()})</div>
+            <div>Projected National Activity Budget: <b>ETB {projectedBudget.toLocaleString()}</b> (currently ETB {selectedNa.annual_budget.toLocaleString()})</div>
+          </div>
+
+          <div className="flex justify-between">
+            <button onClick={() => setStep(1)} className="px-4 py-2 rounded-lg border text-xs font-bold">Back</button>
+            <button disabled={!canSave} onClick={handleSave} className="bg-ercs-red text-white px-5 py-2.5 rounded-lg text-xs font-bold flex items-center gap-2 disabled:opacity-40">
+              <Save className="w-3.5 h-3.5" /> {isEditing ? 'Update Plan Entry' : 'Save & Link to National Activity'}
+            </button>
+          </div>
+        </div>
+      )}
     </ModalShell>
   );
 };
+
+const StepPill: React.FC<{ num: number; label: string; active: boolean; done: boolean }> = ({ num, label, active, done }) => (
+  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-bold ${active ? 'bg-red-50 text-ercs-red' : done ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}>
+    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${active ? 'bg-ercs-red text-white' : done ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-white'}`}>{num}</span>
+    {label}
+  </div>
+);
 
 const LabeledInput: React.FC<{ label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string }> = ({ label, value, onChange, type = 'text', placeholder }) => (
   <label className="block">
@@ -441,7 +648,7 @@ const ConfirmDeleteModal: React.FC<{ label: string; onCancel: () => void; onConf
   <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
     <div className="bg-white max-w-md w-full rounded-xl shadow-2xl p-5">
       <div className="flex items-center gap-2 text-red-700 font-black text-sm"><Trash2 className="w-5 h-5" /> Delete "{label}"?</div>
-      <p className="text-xs text-slate-600 mt-3">This also removes any linked quarterly actuals so totals never reference deleted data.</p>
+      <p className="text-xs text-slate-600 mt-3">This also removes any linked quarterly actuals, and re-syncs the parent National Activity's totals, so nothing ever references deleted data.</p>
       <div className="mt-5 flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 rounded-lg border text-xs font-bold">Cancel</button>
         <button onClick={onConfirm} className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold">Delete</button>

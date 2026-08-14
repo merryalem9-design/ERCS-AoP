@@ -1,3 +1,4 @@
+// src/context/AppContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   StrategicPriority, NationalActivity, Region, Zone, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig, FilterState,
@@ -6,6 +7,7 @@ import {
   INITIAL_STRATEGIC_PRIORITIES, INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_ZONES, INITIAL_PROJECTS, INITIAL_PLAN_ENTRIES,
   FISCAL_QUARTERS, INITIAL_QUARTERLY_ACTUALS, INITIAL_UOM_CONFIGS,
 } from '../data/seedData';
+import { sumTarget, sumBudget } from '../utils/calculations';
 
 interface AppContextType {
   activeRoute: string; setActiveRoute: (r: string) => void;
@@ -117,12 +119,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addRegion = (r: Region) => { setRegions(prev => [...prev, r]); showToast(`Region ${r.name} added.`); };
   const addZone = (z: Zone) => { setZones(prev => [...prev, z]); showToast(`Zone ${z.name} added.`); };
 
-  const addPlanEntry = (pe: PlanEntry) => { setPlanEntries(prev => [...prev, pe]); showToast('Plan entry added.'); };
-  const updatePlanEntry = (pe: PlanEntry) => { setPlanEntries(prev => prev.map(x => x.id === pe.id ? pe : x)); showToast('Plan entry updated.'); };
+  // ---------------------------------------------------------------------
+  // THE "ADD PLAN" LINK: a Plan Entry always belongs to exactly one
+  // National Activity via national_activity_id. Whenever the set of Plan
+  // Entries under a National Activity changes (added / edited / deleted),
+  // this recomputes that National Activity's OFFICIAL annual_target and
+  // annual_budget as the live sum of its children, and writes it straight
+  // back onto the National Activity record. This is what keeps the
+  // National Activity "always accurate" instead of just flagging a
+  // mismatch after the fact.
+  // ---------------------------------------------------------------------
+  const syncNationalActivityTotals = (nationalActivityId: string, entries: PlanEntry[]) => {
+    const children = entries.filter(pe => pe.national_activity_id === nationalActivityId);
+    const target = sumTarget(children);
+    const budget = sumBudget(children);
+    setNationalActivities(prev => prev.map(na => (
+      na.id === nationalActivityId ? { ...na, annual_target: target, annual_budget: budget } : na
+    )));
+    return { target, budget };
+  };
+
+  const addPlanEntry = (pe: PlanEntry) => {
+    const next = [...planEntries, pe];
+    setPlanEntries(next);
+    const na = nationalActivities.find(n => n.id === pe.national_activity_id);
+    if (na) {
+      const { target, budget } = syncNationalActivityTotals(na.id, next);
+      showToast(`Plan entry added and linked to ${na.code}. Target synced to ${target.toLocaleString()} ${na.uom}, budget to ETB ${budget.toLocaleString()}.`);
+    } else {
+      showToast('Plan entry added.');
+    }
+  };
+
+  const updatePlanEntry = (pe: PlanEntry) => {
+    const old = planEntries.find(x => x.id === pe.id);
+    const next = planEntries.map(x => (x.id === pe.id ? pe : x));
+    setPlanEntries(next);
+
+    // If the entry was re-linked to a different National Activity, re-sync
+    // both the old parent (which just lost a child) and the new one.
+    const affectedIds = new Set<string>([pe.national_activity_id]);
+    if (old && old.national_activity_id !== pe.national_activity_id) affectedIds.add(old.national_activity_id);
+    affectedIds.forEach(id => syncNationalActivityTotals(id, next));
+
+    const na = nationalActivities.find(n => n.id === pe.national_activity_id);
+    showToast(`Plan entry updated. ${na?.code || 'Linked National Activity'} target & budget re-synced live.`);
+  };
+
   const deletePlanEntry = (id: string) => {
-    setPlanEntries(prev => prev.filter(x => x.id !== id));
+    const old = planEntries.find(x => x.id === id);
+    const next = planEntries.filter(x => x.id !== id);
+    setPlanEntries(next);
     setQuarterlyActuals(prev => prev.filter(a => a.plan_entry_id !== id));
-    showToast('Plan entry and its quarterly actuals deleted.');
+    if (old) syncNationalActivityTotals(old.national_activity_id, next);
+    showToast('Plan entry and its quarterly actuals deleted. Linked National Activity totals re-synced.');
   };
 
   const upsertQuarterlyActual = (qa: QuarterlyActual) => {
