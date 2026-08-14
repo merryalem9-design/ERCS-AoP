@@ -1,3 +1,4 @@
+// src/pages/QuarterlyEntryPage.tsx
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
@@ -52,6 +53,19 @@ export const QuarterlyEntryPage: React.FC = () => {
   );
 };
 
+// Number inputs' min="0" is only a UI hint — the browser does not stop the
+// value "-100" from being typed and committed. Without this clamp, a
+// negative Actual or Expenditure flows straight into quarterlyActuals and
+// from there into every downstream number in the app: cumulative
+// achievement % here, Target vs Actual / Budget Utilization / Beneficiaries
+// on the National Activity Detail page, and every KPI, chart and table on
+// the Report page. Clamping here — the single place these values are
+// written — is what guarantees they can never go negative anywhere else.
+const clampNonNegative = (raw: string): number => {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+
 const EntryRow: React.FC<{
   entry: PlanEntry; quarter: QuarterId; nationalActivityCode: string; uom: string; scopeLabel?: string;
 }> = ({ entry, quarter, nationalActivityCode, uom, scopeLabel }) => {
@@ -69,6 +83,18 @@ const EntryRow: React.FC<{
 
   const sync = (nextActual: number, nextExp: number) => {
     upsertQuarterlyActual({ id: existing?.id || `qa-${entry.id}-${quarter}`, plan_entry_id: entry.id, quarter_id: quarter, actual: nextActual, expenditure: nextExp });
+  };
+
+  const handleActualChange = (raw: string) => {
+    const v = clampNonNegative(raw);
+    setActualVal(v);
+    sync(v, expVal);
+  };
+
+  const handleExpChange = (raw: string) => {
+    const v = clampNonNegative(raw);
+    setExpVal(v);
+    sync(actualVal, v);
   };
 
   // quarterlyActuals already reflects the latest edit: sync() above updates context
@@ -91,11 +117,11 @@ const EntryRow: React.FC<{
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <label className="block text-[10px] font-bold text-slate-500 mb-1">Actual this quarter ({uom})</label>
-          <input type="number" min="0" value={actualVal} onChange={e => { const v = Number(e.target.value) || 0; setActualVal(v); sync(v, expVal); }} className="w-32 text-xs p-2 border rounded" />
+          <input type="number" min="0" value={actualVal} onChange={e => handleActualChange(e.target.value)} className="w-32 text-xs p-2 border rounded" />
         </div>
         <div>
           <label className="block text-[10px] font-bold text-slate-500 mb-1">Expenditure this quarter (ETB)</label>
-          <input type="number" min="0" value={expVal} onChange={e => { const v = Number(e.target.value) || 0; setExpVal(v); sync(actualVal, v); }} className="w-36 text-xs p-2 border rounded" />
+          <input type="number" min="0" value={expVal} onChange={e => handleExpChange(e.target.value)} className="w-36 text-xs p-2 border rounded" />
         </div>
 
         <div className="flex items-center gap-2 ml-auto">

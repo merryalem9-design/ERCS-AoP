@@ -1,5 +1,5 @@
 // src/pages/PlanPage.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
 import { sumTarget, sumBudget } from '../utils/calculations';
@@ -100,6 +100,12 @@ export const PlanPage: React.FC = () => {
       annual_budget: hasChildren ? sumBudget(linkedChildren) : (Number.isFinite(manualBudget) && manualBudget >= 0 ? manualBudget : 0),
     };
     if (!na.code || !na.description || !na.uom || !na.strategic_priority_id) return;
+    // Defensive re-check (mirrors the NationalActivityModal's own guard):
+    // two National Activities sharing a code would be visually
+    // indistinguishable in every Report table and filter dropdown, since
+    // those are all labeled by code, not id.
+    const isDuplicateCode = nationalActivities.some(other => other.id !== na.id && other.code.trim().toLowerCase() === na.code.toLowerCase());
+    if (isDuplicateCode) return;
     if (naForm.id) updateNationalActivity(na); else addNationalActivity(na);
     setNaForm(null);
   };
@@ -304,12 +310,19 @@ export const PlanPage: React.FC = () => {
 };
 
 const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
-  const { uomConfigs, strategicPriorities, regions, zones, addRegion, addZone, planEntries } = useApp();
+  const { uomConfigs, strategicPriorities, regions, zones, addRegion, addZone, planEntries, nationalActivities } = useApp();
 
   const [addingRegion, setAddingRegion] = useState(false);
   const [newRegionName, setNewRegionName] = useState('');
   const [addingZone, setAddingZone] = useState(false);
   const [newZoneName, setNewZoneName] = useState('');
+
+  // Guards against a fast double-click firing onSave() twice before this
+  // modal unmounts, which would otherwise create two near-identical
+  // National Activities. useRef (not useState) because refs update
+  // synchronously — a useState flag can still read stale on the second
+  // click if it fires before React re-renders.
+  const savingRef = useRef(false);
 
   const zonesInScope = form.region_id ? zones.filter(z => z.region_id === form.region_id) : [];
 
@@ -322,11 +335,9 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
   const computedTarget = sumTarget(linkedChildren);
   const computedBudget = sumBudget(linkedChildren);
 
-  // Required-field + non-negative-number guards. Previously Save just
-  // silently no-op'd on missing fields with no explanation, and manual
-  // Target/Budget accepted negative numbers (min="0" on <input> is only a
-  // UI hint, not an enforced constraint) which would corrupt every
-  // downstream aggregate. Both are now caught and explained before Save.
+  // Required-field + non-negative-number guards. Manual Target/Budget
+  // accepted negative numbers (min="0" on <input> is only a UI hint, not an
+  // enforced constraint), which would corrupt every downstream aggregate.
   const requiredMissing =
     !(form.code || '').trim() ||
     !(form.description || '').trim() ||
@@ -344,7 +355,15 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
       (manualBudgetRaw !== undefined && manualBudgetRaw !== ('' as any) && (Number.isNaN(manualBudgetNum) || manualBudgetNum < 0))
     );
 
-  const saveDisabled = requiredMissing || manualNumbersInvalid;
+  // Two National Activities sharing the same code would be indistinguishable
+  // in every Report table and filter dropdown (both are labeled by code, not
+  // id) — this catches that before it can happen.
+  const codeTrimmed = (form.code || '').trim();
+  const duplicateCode = codeTrimmed.length > 0 && nationalActivities.some(
+    other => other.id !== form.id && other.code.trim().toLowerCase() === codeTrimmed.toLowerCase()
+  );
+
+  const saveDisabled = requiredMissing || manualNumbersInvalid || duplicateCode;
 
   const handleAddRegion = () => {
     const name = newRegionName.trim();
@@ -364,6 +383,12 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
     setForm((f: any) => ({ ...f, zone_id: zone.id }));
     setNewZoneName('');
     setAddingZone(false);
+  };
+
+  const handleSaveClick = () => {
+    if (saveDisabled || savingRef.current) return;
+    savingRef.current = true;
+    onSave();
   };
 
   return (
@@ -494,13 +519,18 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
           Strategic Priority, Code, Description and UoM are all required before saving.
         </div>
       )}
+      {!requiredMissing && duplicateCode && (
+        <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
+          Another National Activity already uses the code "{codeTrimmed}". Codes must be unique — every Report table and filter is labeled by code, not id.
+        </div>
+      )}
       {manualNumbersInvalid && (
         <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
           Annual Target and Annual Budget must be zero or greater.
         </div>
       )}
 
-      <button onClick={onSave} disabled={saveDisabled} className="mt-4 w-full bg-ercs-red text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"><Save className="w-3.5 h-3.5" /> Save</button>
+      <button onClick={handleSaveClick} disabled={saveDisabled} className="mt-4 w-full bg-ercs-red text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"><Save className="w-3.5 h-3.5" /> Save</button>
     </ModalShell>
   );
 };
@@ -522,6 +552,12 @@ const PlanEntryWizardModal: React.FC<{
   const { strategicPriorities, nationalActivities, regions, projects, planEntries, addPlanEntry, updatePlanEntry } = useApp();
   const [step, setStep] = useState<1 | 2>(startStep);
   const [form, setForm] = useState<PeWizardFormState>(initial);
+
+  // Same double-submit guard as the National Activity modal, and for the
+  // same reason: a fast double-click here would create two Plan Entries for
+  // the same Region/Project, silently double-counting that contribution in
+  // the parent National Activity's synced Target/Budget.
+  const savingRef = useRef(false);
 
   const isEditing = !!form.id;
 
@@ -570,7 +606,8 @@ const PlanEntryWizardModal: React.FC<{
     !isDuplicateLink;
 
   const handleSave = () => {
-    if (!canSave) return;
+    if (!canSave || savingRef.current) return;
+    savingRef.current = true;
     const pe: PlanEntry = {
       id: form.id || `pe-${Date.now()}`,
       national_activity_id: form.national_activity_id,

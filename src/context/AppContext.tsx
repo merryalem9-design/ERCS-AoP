@@ -122,11 +122,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addNationalActivity = (na: NationalActivity) => { setNationalActivities(prev => [...prev, na]); showToast(`National Activity ${na.code} created.`); };
   const updateNationalActivity = (na: NationalActivity) => { setNationalActivities(prev => prev.map(x => x.id === na.id ? na : x)); showToast(`National Activity ${na.code} updated.`); };
+
+  // Cascades the delete to every dependent record, AND clears any UI state
+  // that referenced this National Activity by id. Without the last two
+  // lines, filters.nationalActivityId or selectedNationalActivityId could
+  // keep pointing at an id that no longer exists anywhere — which doesn't
+  // crash anything, but silently makes the Plan Entries table look "empty"
+  // (filter matches nothing) or makes the Detail page fall back to a
+  // different activity than the one the person thinks they're viewing.
   const deleteNationalActivity = (id: string) => {
     const childIds = planEntries.filter(pe => pe.national_activity_id === id).map(pe => pe.id);
     setPlanEntries(prev => prev.filter(pe => pe.national_activity_id !== id));
     setQuarterlyActuals(prev => prev.filter(a => !childIds.includes(a.plan_entry_id)));
     setNationalActivities(prev => prev.filter(x => x.id !== id));
+    setSelectedNationalActivityId(prev => (prev === id ? null : prev));
+    setFilters(prev => (prev.nationalActivityId === id ? { ...prev, nationalActivityId: 'ALL' } : prev));
     showToast('National Activity and its linked plan/actual records deleted.');
   };
 
@@ -142,6 +152,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // back onto the National Activity record. This is what keeps the
   // National Activity "always accurate" instead of just flagging a
   // mismatch after the fact.
+  //
+  // Always computes from the `entries` array passed in — the POST-mutation
+  // snapshot — never from the `planEntries` closure variable. That's what
+  // guarantees this is correct regardless of React's render/commit timing:
+  // there's no window where the sum could be computed from a stale list.
   // ---------------------------------------------------------------------
   const syncNationalActivityTotals = (nationalActivityId: string, entries: PlanEntry[]) => {
     const children = entries.filter(pe => pe.national_activity_id === nationalActivityId);
