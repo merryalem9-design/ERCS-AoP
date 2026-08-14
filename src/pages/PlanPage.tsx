@@ -7,6 +7,7 @@ import { AlertTriangle, CheckCircle2, Layers, Plus, Save, Trash2, X } from 'luci
 
 export const PlanPage: React.FC = () => {
   const {
+    strategicPriorities,
     nationalActivities, addNationalActivity, updateNationalActivity, deleteNationalActivity,
     regions, projects, planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry,
     uomConfigs, filters, getFilteredPlanEntries,
@@ -18,22 +19,26 @@ export const PlanPage: React.FC = () => {
 
   const filteredEntries = getFilteredPlanEntries();
 
-  // Which National Activities to show reconciliation + entries for, based on the top filter.
-  const visibleNationalActivities = filters.nationalActivityId === 'ALL'
-    ? nationalActivities
-    : nationalActivities.filter(na => na.id === filters.nationalActivityId);
+  // Which National Activities to show reconciliation + entries for, based on the
+  // Strategic Priority and National Activity filters at the top.
+  const visibleNationalActivities = nationalActivities.filter(na => {
+    if (filters.strategicPriorityId !== 'ALL' && na.strategic_priority_id !== filters.strategicPriorityId) return false;
+    if (filters.nationalActivityId !== 'ALL' && na.id !== filters.nationalActivityId) return false;
+    return true;
+  });
 
   const saveNa = () => {
     if (!naForm) return;
     const na: NationalActivity = {
       id: naForm.id || `na-${Date.now()}`,
+      strategic_priority_id: naForm.strategic_priority_id || '',
       code: (naForm.code || '').trim(),
       description: (naForm.description || '').trim(),
       uom: (naForm.uom || '').trim(),
       annual_target: Number(naForm.annual_target) || 0,
       annual_budget: Number(naForm.annual_budget) || 0,
     };
-    if (!na.code || !na.description || !na.uom) return;
+    if (!na.code || !na.description || !na.uom || !na.strategic_priority_id) return;
     if (naForm.id) updateNationalActivity(na); else addNationalActivity(na);
     setNaForm(null);
   };
@@ -73,7 +78,7 @@ export const PlanPage: React.FC = () => {
             <Layers className="w-4 h-4 text-ercs-red" /> National Activities ({visibleNationalActivities.length})
           </div>
           <button
-            onClick={() => setNaForm({})}
+            onClick={() => setNaForm({ strategic_priority_id: filters.strategicPriorityId !== 'ALL' ? filters.strategicPriorityId : undefined })}
             className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold"
           >
             <Plus className="w-3.5 h-3.5" /> Add National Activity
@@ -86,15 +91,22 @@ export const PlanPage: React.FC = () => {
             const childBudget = sumBudget(children);
             const targetMismatch = childTarget !== na.annual_target;
             const budgetMismatch = childBudget !== na.annual_budget;
+            const sp = strategicPriorities.find(s => s.id === na.strategic_priority_id);
             return (
               <div key={na.id} className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {sp && <span className="bg-slate-800 text-white text-[10px] font-extrabold px-2 py-0.5 rounded">{sp.code}</span>}
                       <span className="bg-ercs-red text-white text-[10px] font-extrabold px-2 py-0.5 rounded">{na.code}</span>
                       <span className="text-[10px] text-slate-500 font-bold uppercase">{na.uom}</span>
                     </div>
                     <div className="text-sm font-bold text-slate-800 mt-1">{na.description}</div>
+                    {sp && (
+                      <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                        {sp.name} <span className="text-slate-300">·</span> {sp.objective}
+                      </div>
+                    )}
                     <div className="text-xs text-slate-500 mt-1">
                       Official Target: <b>{na.annual_target.toLocaleString()} {na.uom}</b> · Official Budget: <b>ETB {na.annual_budget.toLocaleString()}</b>
                     </div>
@@ -191,10 +203,21 @@ export const PlanPage: React.FC = () => {
 };
 
 const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
-  const { uomConfigs } = useApp();
+  const { uomConfigs, strategicPriorities } = useApp();
   return (
     <ModalShell title={form.id ? 'Edit National Activity' : 'Add National Activity'} onClose={onClose}>
       <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <span className="block text-[10px] font-bold text-slate-500 mb-1">Strategic Priority</span>
+          <select
+            value={form.strategic_priority_id || ''}
+            onChange={e => setForm((f: any) => ({ ...f, strategic_priority_id: e.target.value }))}
+            className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-100"
+          >
+            <option value="">Select Strategic Priority…</option>
+            {strategicPriorities.map(sp => <option key={sp.id} value={sp.id}>{sp.code} — {sp.name}</option>)}
+          </select>
+        </div>
         <LabeledInput label="Code" value={form.code || ''} onChange={v => setForm((f: any) => ({ ...f, code: v }))} placeholder="Activity 1.1.3" />
         <div>
           <span className="block text-[10px] font-bold text-slate-500 mb-1">UOM</span>

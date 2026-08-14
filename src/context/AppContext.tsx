@@ -1,15 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
-  NationalActivity, Region, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig, FilterState,
+  StrategicPriority, NationalActivity, Region, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig, FilterState,
 } from '../types';
 import {
-  INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_PROJECTS, INITIAL_PLAN_ENTRIES,
+  INITIAL_STRATEGIC_PRIORITIES, INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_PROJECTS, INITIAL_PLAN_ENTRIES,
   FISCAL_QUARTERS, INITIAL_QUARTERLY_ACTUALS, INITIAL_UOM_CONFIGS,
 } from '../data/seedData';
 
 interface AppContextType {
   activeRoute: string; setActiveRoute: (r: string) => void;
   toastMessage: string | null; showToast: (msg: string) => void;
+
+  strategicPriorities: StrategicPriority[];
 
   nationalActivities: NationalActivity[];
   addNationalActivity: (na: NationalActivity) => void;
@@ -35,9 +37,9 @@ interface AppContextType {
   getFilteredPlanEntries: () => PlanEntry[];
 }
 
-const DEFAULT_FILTERS: FilterState = { nationalActivityId: 'ALL', regionId: 'ALL', projectId: 'ALL', quarterId: 'ALL' };
+const DEFAULT_FILTERS: FilterState = { strategicPriorityId: 'ALL', nationalActivityId: 'ALL', regionId: 'ALL', projectId: 'ALL', quarterId: 'ALL' };
 
-const PERSISTENCE_KEY = 'ercs-aop-simplified-v1';
+const PERSISTENCE_KEY = 'ercs-aop-simplified-v2';
 
 const readPersisted = <T,>(key: string, fallback: T): T => {
   if (typeof window === 'undefined') return fallback;
@@ -57,6 +59,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeRoute, setActiveRoute] = useState<string>(() => readPersisted('activeRoute', 'plan'));
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const [strategicPriorities] = useState<StrategicPriority[]>(INITIAL_STRATEGIC_PRIORITIES);
   const [nationalActivities, setNationalActivities] = useState<NationalActivity[]>(() => readPersisted('nationalActivities', INITIAL_NATIONAL_ACTIVITIES));
   const [regions] = useState<Region[]>(INITIAL_REGIONS);
   const [projects] = useState<Project[]>(INITIAL_PROJECTS);
@@ -64,7 +67,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => readPersisted('planEntries', INITIAL_PLAN_ENTRIES));
   const [quarterlyActuals, setQuarterlyActuals] = useState<QuarterlyActual[]>(() => readPersisted('quarterlyActuals', INITIAL_QUARTERLY_ACTUALS));
   const [uomConfigs, setUomConfigs] = useState<UomFactorConfig[]>(() => readPersisted('uomConfigs', INITIAL_UOM_CONFIGS));
-  const [filters, setFilters] = useState<FilterState>(() => readPersisted('filters', DEFAULT_FILTERS));
+  const [filters, setFilters] = useState<FilterState>(() => ({ ...DEFAULT_FILTERS, ...readPersisted('filters', DEFAULT_FILTERS) }));
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -81,6 +84,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const resetFilters = () => setFilters(DEFAULT_FILTERS);
 
   const getFilteredPlanEntries = () => planEntries.filter(pe => {
+    if (filters.strategicPriorityId !== 'ALL') {
+      const na = nationalActivities.find(n => n.id === pe.national_activity_id);
+      if (!na || na.strategic_priority_id !== filters.strategicPriorityId) return false;
+    }
     if (filters.nationalActivityId !== 'ALL' && pe.national_activity_id !== filters.nationalActivityId) return false;
     if (filters.regionId !== 'ALL' && pe.region_id !== filters.regionId) return false;
     if (filters.projectId !== 'ALL' && pe.project_id !== filters.projectId) return false;
@@ -125,6 +132,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider value={{
       activeRoute, setActiveRoute, toastMessage, showToast,
+      strategicPriorities,
       nationalActivities, addNationalActivity, updateNationalActivity, deleteNationalActivity,
       regions, projects, quarters,
       planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry,

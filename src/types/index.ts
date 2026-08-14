@@ -2,19 +2,32 @@
 // SIMPLIFIED DATA MODEL
 // The goal at this stage is to make one pipeline crystal clear:
 //
-//   Plan Entry (data entry)
-//     -> Quarterly Actual (data entry)
-//       -> Beneficiaries = Actual x UOM Conversion Factor   (conversion)
-//         -> Summed by National Activity / Region / Project (aggregation)
-//           -> Report Page                                  (reporting)
+//   Strategic Priority (grouping)
+//     -> National Activity (data entry)
+//       -> Plan Entry (data entry)
+//         -> Quarterly Actual (data entry)
+//           -> Beneficiaries = Actual x UOM Conversion Factor   (conversion)
+//             -> Summed by Strategic Priority / National Activity / Region / Project (aggregation)
+//               -> Report Page                                  (reporting)
 //
-// Strategic Priorities/Objectives, user roles, and approval workflows have
-// been removed for this stage so the core pipeline is not obscured.
+// User roles and approval workflows have been removed for this stage so the
+// core pipeline is not obscured. Strategic Priorities were reintroduced as a
+// lightweight grouping layer above National Activity, used only for
+// filtering/aggregation — no separate workflow attached to it.
 // ---------------------------------------------------------------------------
+
+/** Top-level grouping — a Strategic Priority that National Activities roll up into. */
+export interface StrategicPriority {
+  id: string;
+  code: string;      // e.g. "SP1"
+  name: string;       // e.g. "Disaster Preparedness and Response (DPR)"
+  objective: string;  // e.g. "Strategy Objective 1.1: Enhance disaster preparedness measures..."
+}
 
 /** The top-level "what" — a National Activity with its own official annual target. */
 export interface NationalActivity {
   id: string;
+  strategic_priority_id: string; // links up to a StrategicPriority
   code: string;          // e.g. "Activity 1.1.8"
   description: string;
   uom: string;            // Unit of Measure, e.g. "Person", "House Hold (HH)"
@@ -57,8 +70,9 @@ export interface UomFactorConfig {
 }
 
 export interface FilterState {
-  nationalActivityId: string; // 'ALL' or a NationalActivity id
-  regionId: string;           // 'ALL' or a Region id
-  projectId: string;          // 'ALL' or a Project id
-  quarterId: string;          // 'ALL' or a QuarterId
+  strategicPriorityId: string; // 'ALL' or a StrategicPriority id
+  nationalActivityId: string;  // 'ALL' or a NationalActivity id
+  regionId: string;            // 'ALL' or a Region id
+  projectId: string;           // 'ALL' or a Project id
+  quarterId: string;           // 'ALL' or a QuarterId
 }

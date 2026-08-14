@@ -7,10 +7,24 @@ interface Props {
 }
 
 export const FilterBar: React.FC<Props> = ({ showQuarter = true }) => {
-  const { filters, setFilters, resetFilters, nationalActivities, regions, projects, quarters } = useApp();
+  const { filters, setFilters, resetFilters, strategicPriorities, nationalActivities, regions, projects, quarters } = useApp();
+
+  // National Activity options narrow to the selected Strategic Priority so the
+  // dropdown never offers a combination that can't return any rows.
+  const nationalActivitiesInScope = filters.strategicPriorityId === 'ALL'
+    ? nationalActivities
+    : nationalActivities.filter(na => na.strategic_priority_id === filters.strategicPriorityId);
+
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFilters(prev => {
+      // Picking a Strategic Priority narrows which National Activities are valid,
+      // so clear the National Activity selection if it no longer belongs to it.
+      if (name === 'strategicPriorityId') {
+        const currentNa = nationalActivities.find(na => na.id === prev.nationalActivityId);
+        const stillValid = value === 'ALL' || currentNa?.strategic_priority_id === value;
+        return { ...prev, strategicPriorityId: value, nationalActivityId: stillValid ? prev.nationalActivityId : 'ALL' };
+      }
       // A plan entry is either Regional or Project, never both — picking one
       // clears the other so the filter combination can never return zero rows.
       if (name === 'regionId' && value !== 'ALL') return { ...prev, regionId: value, projectId: 'ALL' };
@@ -30,12 +44,19 @@ export const FilterBar: React.FC<Props> = ({ showQuarter = true }) => {
           <RotateCcw className="w-3 h-3" /> Reset
         </button>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 mb-1">Strategic Priority</label>
+          <select name="strategicPriorityId" value={filters.strategicPriorityId} onChange={handleChange} className="w-full text-xs font-medium border-slate-200 rounded-lg bg-slate-50 py-1.5">
+            <option value="ALL">All Strategic Priorities</option>
+            {strategicPriorities.map(sp => <option key={sp.id} value={sp.id}>{sp.code} — {sp.name}</option>)}
+          </select>
+        </div>
         <div>
           <label className="block text-[10px] font-bold text-slate-500 mb-1">National Activity</label>
           <select name="nationalActivityId" value={filters.nationalActivityId} onChange={handleChange} className="w-full text-xs font-medium border-slate-200 rounded-lg bg-slate-50 py-1.5">
             <option value="ALL">All National Activities</option>
-            {nationalActivities.map(na => <option key={na.id} value={na.id}>{na.code}</option>)}
+            {nationalActivitiesInScope.map(na => <option key={na.id} value={na.id}>{na.code}</option>)}
           </select>
         </div>
         <div>

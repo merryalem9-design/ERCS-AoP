@@ -1,9 +1,25 @@
-import { NationalActivity, Region, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig } from '../types';
+import {
+  StrategicPriority, NationalActivity, Region, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig,
+} from '../types';
+
+// Top-level grouping used purely for filtering/aggregation — each National
+// Activity below is tagged with exactly one of these. Sourced from the ERCS
+// AoP & Project Alignment Framework: only one Strategic Priority (and one
+// Strategy Objective under it) is actually in use for the current data.
+export const INITIAL_STRATEGIC_PRIORITIES: StrategicPriority[] = [
+  {
+    id: 'sp-1',
+    code: 'SP1',
+    name: 'Disaster Preparedness and Response (DPR)',
+    objective: 'Strategy Objective 1.1: Enhance disaster preparedness measures and early action capabilities',
+  },
+];
 
 export const INITIAL_NATIONAL_ACTIVITIES: NationalActivity[] = [
-  { id: 'na-1-1-3', code: 'Activity 1.1.3', description: 'Support capacity building on Anticipatory Action (AA) and FbF', uom: 'Person', annual_target: 200, annual_budget: 1_800_000 },
-  { id: 'na-1-1-8', code: 'Activity 1.1.8', description: 'Provide BDRT training and establish response teams at branches', uom: 'Person', annual_target: 107, annual_budget: 3_580_000 },
-  { id: 'na-1-2-1', code: 'Activity 1.2.1', description: 'Emergency food and NFI distribution to vulnerable households', uom: 'House Hold (HH)', annual_target: 1000, annual_budget: 5_200_000 },
+  // SP1 — Disaster Preparedness and Response (DPR)
+  { id: 'na-1-1-3', strategic_priority_id: 'sp-1', code: 'Activity 1.1.3', description: 'Support capacity building on Anticipatory Action (AA) and FbF', uom: 'Person', annual_target: 200, annual_budget: 1_800_000 },
+  { id: 'na-1-1-8', strategic_priority_id: 'sp-1', code: 'Activity 1.1.8', description: 'Provide BDRT training and establish response teams at branches', uom: 'Person', annual_target: 107, annual_budget: 3_580_000 },
+  { id: 'na-1-2-1', strategic_priority_id: 'sp-1', code: 'Activity 1.2.1', description: 'Emergency food and NFI distribution to vulnerable households', uom: 'House Hold (HH)', annual_target: 1000, annual_budget: 5_200_000 },
 ];
 
 export const INITIAL_REGIONS: Region[] = [
@@ -54,5 +70,4 @@ export const INITIAL_QUARTERLY_ACTUALS: QuarterlyActual[] = [
 export const INITIAL_UOM_CONFIGS: UomFactorConfig[] = [
   { uom: 'Person', factor: 1 },
   { uom: 'House Hold (HH)', factor: 5 },
-  { uom: 'Community', factor: 100 },
 ];

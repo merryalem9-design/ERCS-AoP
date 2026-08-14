@@ -9,7 +9,7 @@ import { Target, Wallet, Users, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 export const ReportPage: React.FC = () => {
-  const { nationalActivities, regions, projects, quarterlyActuals, uomConfigs, filters, getFilteredPlanEntries } = useApp();
+  const { strategicPriorities, nationalActivities, regions, projects, quarterlyActuals, uomConfigs, filters, getFilteredPlanEntries } = useApp();
 
   const filteredEntries = getFilteredPlanEntries();
   const q = filters.quarterId;
@@ -37,7 +37,18 @@ export const ReportPage: React.FC = () => {
   const utilization = budgetUtilizationPct(spent, budget);
   const beneficiaries = beneficiariesFor(filteredEntries);
 
-  // Breakdown by National Activity (respects current Region/Project filter).
+  // Breakdown by Strategic Priority (respects current National Activity/Region/Project filter).
+  const byStrategy = strategicPriorities
+    .map(sp => {
+      const naIds = nationalActivities.filter(na => na.strategic_priority_id === sp.id).map(na => na.id);
+      const es = filteredEntries.filter(e => naIds.includes(e.national_activity_id));
+      if (es.length === 0) return null;
+      const t = sumTarget(es), a = sumActual(es, quarterlyActuals, q), b = sumBudget(es), x = sumExpenditure(es, quarterlyActuals, q);
+      return { key: sp.id, name: `${sp.code} — ${sp.name}`, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es) };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  // Breakdown by National Activity (respects current Strategic Priority/Region/Project filter).
   const byNational = nationalActivities
     .map(na => {
       const es = filteredEntries.filter(e => e.national_activity_id === na.id);
@@ -78,7 +89,7 @@ export const ReportPage: React.FC = () => {
       <div>
         <h2 className="text-xl font-black text-slate-800">Step 3 — Aggregated Report</h2>
         <p className="text-xs text-slate-500 mt-1">
-          Everything below is derived live from the Plan and Quarterly Entry pages: Actual × Conversion Factor = Beneficiaries, summed up by National Activity, Region and Project.
+          Everything below is derived live from the Plan and Quarterly Entry pages: Actual × Conversion Factor = Beneficiaries, summed up by Strategic Priority, National Activity, Region and Project.
         </p>
       </div>
 
@@ -108,6 +119,7 @@ export const ReportPage: React.FC = () => {
         </ResponsiveContainer>
       </div>
 
+      <ReportTable title="By Strategic Priority" rows={byStrategy} />
       <ReportTable title="By National Activity" rows={byNational} extraColumn={{ label: 'Official Target', get: r => `${r.officialTarget.toLocaleString()} ${r.uom}` }} />
       <ReportTable title="By Region" rows={byRegion} />
       <ReportTable title="By Project" rows={byProject} />
