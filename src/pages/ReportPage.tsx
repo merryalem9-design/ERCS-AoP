@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
 import { StatusBadge } from '../components/common/StatusBadge';
 import {
-  sumTarget, sumBudget, sumActual, sumExpenditure, achievementPct, budgetUtilizationPct, convertToBeneficiaries,
+  sumTarget, sumBudget, sumActual, sumExpenditure, achievementPct, budgetUtilizationPct, convertToBeneficiaries, getStatusBadge,
 } from '../utils/calculations';
 import { Target, Wallet, Users, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
@@ -13,6 +13,15 @@ export const ReportPage: React.FC = () => {
 
   const filteredEntries = getFilteredPlanEntries();
   const q = filters.quarterId;
+
+  // Every National Activity can define its own UOM (Person, House Hold (HH), ...).
+  // Summing raw Target/Actual across entries that don't share a UOM produces a
+  // number with no real unit — this tells the Achievement card whether that's
+  // happening in the current filter scope.
+  const uomsInScope = Array.from(new Set(
+    filteredEntries.map(e => nationalActivities.find(na => na.id === e.national_activity_id)?.uom).filter((u): u is string => !!u)
+  ));
+  const singleUom = uomsInScope.length === 1 ? uomsInScope[0] : null;
 
   const beneficiariesFor = (entryIds: typeof filteredEntries) => entryIds.reduce((sum, e) => {
     const na = nationalActivities.find(n => n.id === e.national_activity_id);
@@ -76,7 +85,7 @@ export const ReportPage: React.FC = () => {
       <FilterBar />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard title="Achievement" val={`${achievement.toFixed(1)}%`} sub={`${actual.toLocaleString()} / ${target.toLocaleString()}`} icon={Target} />
+        <AchievementKPICard achievement={achievement} actual={actual} target={target} singleUom={singleUom} uomsInScope={uomsInScope} hasActuals={actual > 0} />
         <KPICard title="Budget Utilization" val={`${utilization.toFixed(1)}%`} sub={`ETB ${spent.toLocaleString()} / ${budget.toLocaleString()}`} icon={Wallet} />
         <KPICard title="Beneficiaries Reached" val={beneficiaries.toLocaleString()} sub="Actual × Conversion Factor" icon={Users} />
         <KPICard title="Plan Entries in Scope" val={String(filteredEntries.length)} sub="Matching current filters" icon={TrendingUp} />
@@ -113,6 +122,42 @@ const KPICard = ({ title, val, sub, icon: Icon }: any) => (
     <div className="text-[10px] mt-1 text-slate-500">{sub}</div>
   </div>
 );
+
+// The achievement % is only a real, comparable number when every entry in scope
+// shares one UOM (you can't sum "Persons" and "Households" into one ratio).
+// This card makes that visible instead of silently combining mismatched units.
+const ACHIEVEMENT_TONE: Record<string, string> = {
+  Overachieved: 'text-indigo-600',
+  Completed: 'text-emerald-600',
+  'On Track': 'text-emerald-600',
+  'At Risk': 'text-amber-600',
+  Behind: 'text-rose-600',
+  Planning: 'text-slate-800',
+};
+
+const AchievementKPICard: React.FC<{
+  achievement: number; actual: number; target: number; singleUom: string | null; uomsInScope: string[]; hasActuals: boolean;
+}> = ({ achievement, actual, target, singleUom, uomsInScope, hasActuals }) => {
+  const badge = getStatusBadge(achievement, hasActuals);
+  const tone = ACHIEVEMENT_TONE[badge.label] || 'text-slate-800';
+  return (
+    <div className="bg-white p-4 rounded-xl border shadow-sm">
+      <div className="flex justify-between mb-2 text-xs font-bold text-slate-500"><span>Achievement</span><Target className="w-4 h-4" /></div>
+      <div className={`text-2xl font-black ${tone}`}>{achievement.toFixed(1)}%</div>
+      <div className="text-[10px] mt-1 text-slate-500">
+        {actual.toLocaleString()} / {target.toLocaleString()}{singleUom ? ` ${singleUom}` : ''}
+      </div>
+      <div className="mt-2">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.color}`}>{badge.label}</span>
+      </div>
+      {uomsInScope.length > 1 && (
+        <div className="mt-2 text-[9px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 font-semibold">
+          ⚠ Mixed units in scope ({uomsInScope.join(', ')}) — this % sums raw counts across different UOMs and is not a real unit. Filter to one National Activity for a precise reading.
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface Row { key: string; name: string; target: number; actual: number; achievement: number; budget: number; spent: number; beneficiaries: number; }
 
