@@ -6,7 +6,7 @@
 //     -> National Activity (data entry)
 //       -> Plan Entry (data entry)
 //         -> Quarterly Actual (data entry)
-//           -> Beneficiaries = Actual x UOM Conversion Factor   (conversion)
+//           -> Beneficiaries = Actual x UoM Conversion Factor   (conversion)
 //             -> Summed by Strategic Priority / National Activity / Region / Project (aggregation)
 //               -> Report Page                                  (reporting)
 //
@@ -24,6 +24,18 @@ export interface StrategicPriority {
   objective: string;  // e.g. "Strategy Objective 1.1: Enhance disaster preparedness measures..."
 }
 
+/** Who owns delivery of a National Activity. */
+export type Responsibility = 'HQ' | 'Branch' | 'Both';
+
+export interface Region { id: string; name: string; }
+
+/** A Zone is a sub-division of a Region (Ethiopian admin structure: Region > Zone). */
+export interface Zone {
+  id: string;
+  region_id: string; // which Region this Zone belongs to
+  name: string;
+}
+
 /** The top-level "what" — a National Activity with its own official annual target. */
 export interface NationalActivity {
   id: string;
@@ -31,11 +43,13 @@ export interface NationalActivity {
   code: string;          // e.g. "Activity 1.1.8"
   description: string;
   uom: string;            // Unit of Measure, e.g. "Person", "House Hold (HH)"
+  responsibility: Responsibility; // HQ, Branch, or Both
+  region_id?: string;     // optional — set when this activity is scoped to a specific Region
+  zone_id?: string;       // optional — set when this activity is scoped to a specific Zone within that Region
   annual_target: number;  // Official national target for this activity
   annual_budget: number;  // Official national budget (ETB) for this activity
 }
 
-export interface Region { id: string; name: string; }
 export interface Project { id: string; name: string; }
 
 export type ScopeType = 'Regional' | 'Project';
@@ -63,7 +77,7 @@ export interface QuarterlyActual {
   expenditure: number; // ETB spent
 }
 
-/** Global conversion table: Actual (in UOM units) x factor = Beneficiaries reached. */
+/** Global conversion table: Actual (in UoM units) x factor = Beneficiaries reached. */
 export interface UomFactorConfig {
   uom: string;
   factor: number;

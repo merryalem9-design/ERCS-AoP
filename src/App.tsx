@@ -6,6 +6,7 @@ import { Toast } from './components/common/Toast';
 import { PlanPage } from './pages/PlanPage';
 import { QuarterlyEntryPage } from './pages/QuarterlyEntryPage';
 import { ReportPage } from './pages/ReportPage';
+import { NationalActivityDetailPage } from './pages/NationalActivityDetailPage';
 
 const MainLayout: React.FC = () => {
   const { activeRoute } = useApp();
@@ -15,6 +16,7 @@ const MainLayout: React.FC = () => {
       case 'plan': return <PlanPage />;
       case 'quarterly': return <QuarterlyEntryPage />;
       case 'report': return <ReportPage />;
+      case 'national-detail': return <NationalActivityDetailPage />;
       default: return <PlanPage />;
     }
   };

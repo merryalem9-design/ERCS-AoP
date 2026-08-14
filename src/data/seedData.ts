@@ -1,5 +1,5 @@
 import {
-  StrategicPriority, NationalActivity, Region, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig,
+  StrategicPriority, NationalActivity, Region, Zone, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig,
 } from '../types';
 
 // Top-level grouping used purely for filtering/aggregation — each National
@@ -17,9 +17,9 @@ export const INITIAL_STRATEGIC_PRIORITIES: StrategicPriority[] = [
 
 export const INITIAL_NATIONAL_ACTIVITIES: NationalActivity[] = [
   // SP1 — Disaster Preparedness and Response (DPR)
-  { id: 'na-1-1-3', strategic_priority_id: 'sp-1', code: 'Activity 1.1.3', description: 'Support capacity building on Anticipatory Action (AA) and FbF', uom: 'Person', annual_target: 200, annual_budget: 1_800_000 },
-  { id: 'na-1-1-8', strategic_priority_id: 'sp-1', code: 'Activity 1.1.8', description: 'Provide BDRT training and establish response teams at branches', uom: 'Person', annual_target: 107, annual_budget: 3_580_000 },
-  { id: 'na-1-2-1', strategic_priority_id: 'sp-1', code: 'Activity 1.2.1', description: 'Emergency food and NFI distribution to vulnerable households', uom: 'House Hold (HH)', annual_target: 1000, annual_budget: 5_200_000 },
+  { id: 'na-1-1-3', strategic_priority_id: 'sp-1', code: 'Activity 1.1.3', description: 'Support capacity building on Anticipatory Action (AA) and FbF', uom: 'Person', responsibility: 'HQ', annual_target: 200, annual_budget: 1_800_000 },
+  { id: 'na-1-1-8', strategic_priority_id: 'sp-1', code: 'Activity 1.1.8', description: 'Provide BDRT training and establish response teams at branches', uom: 'Person', responsibility: 'Both', annual_target: 107, annual_budget: 3_580_000 },
+  { id: 'na-1-2-1', strategic_priority_id: 'sp-1', code: 'Activity 1.2.1', description: 'Emergency food and NFI distribution to vulnerable households', uom: 'House Hold (HH)', responsibility: 'Branch', annual_target: 1000, annual_budget: 5_200_000 },
 ];
 
 export const INITIAL_REGIONS: Region[] = [
@@ -27,6 +27,44 @@ export const INITIAL_REGIONS: Region[] = [
   { id: 'reg-4', name: 'Benshangul Gumuz' }, { id: 'reg-5', name: 'SNNPR' }, { id: 'reg-6', name: 'Somali' },
   { id: 'reg-7', name: 'Gambela' }, { id: 'reg-8', name: 'Harari' }, { id: 'reg-9', name: 'Afar' },
   { id: 'reg-10', name: 'Addis Ababa' }, { id: 'reg-11', name: 'Dire Dawa' },
+];
+
+// Starter Zone data per Region (Region > Zone). Not exhaustive — use the
+// "+ Add Zone" control in the National Activity form to add any that are
+// missing; new entries persist alongside the rest of the app's data.
+export const INITIAL_ZONES: Zone[] = [
+  // Amhara
+  { id: 'zone-1-1', region_id: 'reg-1', name: 'North Gondar' },
+  { id: 'zone-1-2', region_id: 'reg-1', name: 'South Wollo' },
+  { id: 'zone-1-3', region_id: 'reg-1', name: 'East Gojjam' },
+  // Oromia
+  { id: 'zone-2-1', region_id: 'reg-2', name: 'West Shewa' },
+  { id: 'zone-2-2', region_id: 'reg-2', name: 'Jimma' },
+  { id: 'zone-2-3', region_id: 'reg-2', name: 'Arsi' },
+  // Tigray
+  { id: 'zone-3-1', region_id: 'reg-3', name: 'Central Tigray' },
+  { id: 'zone-3-2', region_id: 'reg-3', name: 'Eastern Tigray' },
+  // Benshangul Gumuz
+  { id: 'zone-4-1', region_id: 'reg-4', name: 'Assosa' },
+  { id: 'zone-4-2', region_id: 'reg-4', name: 'Metekel' },
+  // SNNPR
+  { id: 'zone-5-1', region_id: 'reg-5', name: 'Gurage' },
+  { id: 'zone-5-2', region_id: 'reg-5', name: 'Wolayta' },
+  // Somali
+  { id: 'zone-6-1', region_id: 'reg-6', name: 'Jarar' },
+  { id: 'zone-6-2', region_id: 'reg-6', name: 'Shabelle' },
+  // Gambela
+  { id: 'zone-7-1', region_id: 'reg-7', name: 'Agnuak' },
+  { id: 'zone-7-2', region_id: 'reg-7', name: 'Nuer' },
+  // Harari
+  { id: 'zone-8-1', region_id: 'reg-8', name: 'Harari' },
+  // Afar
+  { id: 'zone-9-1', region_id: 'reg-9', name: 'Zone 1' },
+  { id: 'zone-9-2', region_id: 'reg-9', name: 'Zone 2' },
+  // Addis Ababa
+  { id: 'zone-10-1', region_id: 'reg-10', name: 'Addis Ababa' },
+  // Dire Dawa
+  { id: 'zone-11-1', region_id: 'reg-11', name: 'Dire Dawa' },
 ];
 
 export const INITIAL_PROJECTS: Project[] = [

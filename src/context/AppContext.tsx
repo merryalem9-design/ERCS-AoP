@@ -1,15 +1,18 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
-  StrategicPriority, NationalActivity, Region, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig, FilterState,
+  StrategicPriority, NationalActivity, Region, Zone, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig, FilterState,
 } from '../types';
 import {
-  INITIAL_STRATEGIC_PRIORITIES, INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_PROJECTS, INITIAL_PLAN_ENTRIES,
+  INITIAL_STRATEGIC_PRIORITIES, INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_ZONES, INITIAL_PROJECTS, INITIAL_PLAN_ENTRIES,
   FISCAL_QUARTERS, INITIAL_QUARTERLY_ACTUALS, INITIAL_UOM_CONFIGS,
 } from '../data/seedData';
 
 interface AppContextType {
   activeRoute: string; setActiveRoute: (r: string) => void;
   toastMessage: string | null; showToast: (msg: string) => void;
+
+  // Which National Activity is being viewed on the drill-down detail page.
+  selectedNationalActivityId: string | null; setSelectedNationalActivityId: (id: string | null) => void;
 
   strategicPriorities: StrategicPriority[];
 
@@ -19,6 +22,11 @@ interface AppContextType {
   deleteNationalActivity: (id: string) => void;
 
   regions: Region[];
+  addRegion: (r: Region) => void;
+
+  zones: Zone[];
+  addZone: (z: Zone) => void;
+
   projects: Project[];
   quarters: Quarter[];
 
@@ -58,10 +66,12 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeRoute, setActiveRoute] = useState<string>(() => readPersisted('activeRoute', 'plan'));
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [selectedNationalActivityId, setSelectedNationalActivityId] = useState<string | null>(() => readPersisted('selectedNationalActivityId', null));
 
   const [strategicPriorities] = useState<StrategicPriority[]>(INITIAL_STRATEGIC_PRIORITIES);
   const [nationalActivities, setNationalActivities] = useState<NationalActivity[]>(() => readPersisted('nationalActivities', INITIAL_NATIONAL_ACTIVITIES));
-  const [regions] = useState<Region[]>(INITIAL_REGIONS);
+  const [regions, setRegions] = useState<Region[]>(() => readPersisted('regions', INITIAL_REGIONS));
+  const [zones, setZones] = useState<Zone[]>(() => readPersisted('zones', INITIAL_ZONES));
   const [projects] = useState<Project[]>(INITIAL_PROJECTS);
   const [quarters] = useState<Quarter[]>(FISCAL_QUARTERS);
   const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => readPersisted('planEntries', INITIAL_PLAN_ENTRIES));
@@ -73,12 +83,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (typeof window === 'undefined') return;
     try {
       window.localStorage.setItem(PERSISTENCE_KEY, JSON.stringify({
-        activeRoute, nationalActivities, planEntries, quarterlyActuals, uomConfigs, filters,
+        activeRoute, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyActuals, uomConfigs, filters,
       }));
     } catch {
       // localStorage may be unavailable; in-memory state still works for the session.
     }
-  }, [activeRoute, nationalActivities, planEntries, quarterlyActuals, uomConfigs, filters]);
+  }, [activeRoute, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyActuals, uomConfigs, filters]);
 
   const showToast = (msg: string) => { setToastMessage(msg); setTimeout(() => setToastMessage(null), 3000); };
   const resetFilters = () => setFilters(DEFAULT_FILTERS);
@@ -103,6 +113,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNationalActivities(prev => prev.filter(x => x.id !== id));
     showToast('National Activity and its linked plan/actual records deleted.');
   };
+
+  const addRegion = (r: Region) => { setRegions(prev => [...prev, r]); showToast(`Region ${r.name} added.`); };
+  const addZone = (z: Zone) => { setZones(prev => [...prev, z]); showToast(`Zone ${z.name} added.`); };
 
   const addPlanEntry = (pe: PlanEntry) => { setPlanEntries(prev => [...prev, pe]); showToast('Plan entry added.'); };
   const updatePlanEntry = (pe: PlanEntry) => { setPlanEntries(prev => prev.map(x => x.id === pe.id ? pe : x)); showToast('Plan entry updated.'); };
@@ -132,9 +145,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider value={{
       activeRoute, setActiveRoute, toastMessage, showToast,
+      selectedNationalActivityId, setSelectedNationalActivityId,
       strategicPriorities,
       nationalActivities, addNationalActivity, updateNationalActivity, deleteNationalActivity,
-      regions, projects, quarters,
+      regions, addRegion,
+      zones, addZone,
+      projects, quarters,
       planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry,
       quarterlyActuals, upsertQuarterlyActual,
       uomConfigs, updateUomFactor,

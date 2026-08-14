@@ -2,15 +2,18 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
 import { sumTarget, sumBudget } from '../utils/calculations';
-import { NationalActivity, PlanEntry, ScopeType } from '../types';
-import { AlertTriangle, CheckCircle2, Layers, Plus, Save, Trash2, X } from 'lucide-react';
+import { NationalActivity, PlanEntry, ScopeType, Region, Zone, Responsibility } from '../types';
+import { AlertTriangle, ArrowUpRight, CheckCircle2, Layers, Plus, Save, Trash2, X } from 'lucide-react';
+
+const RESPONSIBILITY_OPTIONS: Responsibility[] = ['HQ', 'Branch', 'Both'];
 
 export const PlanPage: React.FC = () => {
   const {
     strategicPriorities,
     nationalActivities, addNationalActivity, updateNationalActivity, deleteNationalActivity,
-    regions, projects, planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry,
+    regions, zones, projects, planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry,
     uomConfigs, filters, getFilteredPlanEntries,
+    setSelectedNationalActivityId, setActiveRoute,
   } = useApp();
 
   const [naForm, setNaForm] = useState<null | Partial<NationalActivity>>(null);
@@ -27,6 +30,11 @@ export const PlanPage: React.FC = () => {
     return true;
   });
 
+  const viewLinkMap = (naId: string) => {
+    setSelectedNationalActivityId(naId);
+    setActiveRoute('national-detail');
+  };
+
   const saveNa = () => {
     if (!naForm) return;
     const na: NationalActivity = {
@@ -35,6 +43,9 @@ export const PlanPage: React.FC = () => {
       code: (naForm.code || '').trim(),
       description: (naForm.description || '').trim(),
       uom: (naForm.uom || '').trim(),
+      responsibility: (naForm.responsibility as Responsibility) || 'HQ',
+      region_id: naForm.region_id || undefined,
+      zone_id: naForm.zone_id || undefined,
       annual_target: Number(naForm.annual_target) || 0,
       annual_budget: Number(naForm.annual_budget) || 0,
     };
@@ -69,7 +80,7 @@ export const PlanPage: React.FC = () => {
         </p>
       </div>
 
-      <FilterBar showQuarter={false} />
+<FilterBar showQuarter={false} />
 
       {/* National Activities */}
       <section className="bg-white rounded-xl border shadow-sm overflow-hidden">
@@ -78,7 +89,7 @@ export const PlanPage: React.FC = () => {
             <Layers className="w-4 h-4 text-ercs-red" /> National Activities ({visibleNationalActivities.length})
           </div>
           <button
-            onClick={() => setNaForm({ strategic_priority_id: filters.strategicPriorityId !== 'ALL' ? filters.strategicPriorityId : undefined })}
+            onClick={() => setNaForm({ strategic_priority_id: filters.strategicPriorityId !== 'ALL' ? filters.strategicPriorityId : undefined, code: 'Activity ' })}
             className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold"
           >
             <Plus className="w-3.5 h-3.5" /> Add National Activity
@@ -92,6 +103,8 @@ export const PlanPage: React.FC = () => {
             const targetMismatch = childTarget !== na.annual_target;
             const budgetMismatch = childBudget !== na.annual_budget;
             const sp = strategicPriorities.find(s => s.id === na.strategic_priority_id);
+            const naRegion = regions.find(r => r.id === na.region_id);
+            const naZone = zones.find(z => z.id === na.zone_id);
             return (
               <div key={na.id} className="p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -100,6 +113,14 @@ export const PlanPage: React.FC = () => {
                       {sp && <span className="bg-slate-800 text-white text-[10px] font-extrabold px-2 py-0.5 rounded">{sp.code}</span>}
                       <span className="bg-ercs-red text-white text-[10px] font-extrabold px-2 py-0.5 rounded">{na.code}</span>
                       <span className="text-[10px] text-slate-500 font-bold uppercase">{na.uom}</span>
+                      {na.responsibility && (
+                        <span className="bg-slate-100 text-slate-600 text-[10px] font-extrabold px-2 py-0.5 rounded border border-slate-200">{na.responsibility}</span>
+                      )}
+                      {(naRegion || naZone) && (
+                        <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2 py-0.5 rounded">
+                          {[naRegion?.name, naZone?.name].filter(Boolean).join(' / ')}
+                        </span>
+                      )}
                     </div>
                     <div className="text-sm font-bold text-slate-800 mt-1">{na.description}</div>
                     {sp && (
@@ -112,12 +133,17 @@ export const PlanPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
+                    <button onClick={() => viewLinkMap(na.id)} className="px-2.5 py-1.5 rounded bg-red-50 text-ercs-red font-bold text-xs flex items-center gap-1">
+                      View Link Map <ArrowUpRight className="w-3 h-3" />
+                    </button>
                     <button onClick={() => setNaForm(na)} className="px-2.5 py-1.5 rounded bg-blue-50 text-blue-700 font-bold text-xs">Edit</button>
                     <button onClick={() => setDeleteTarget({ type: 'na', id: na.id, label: na.code })} className="px-2.5 py-1.5 rounded bg-red-50 text-red-700 font-bold text-xs flex items-center gap-1"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-bold">
-                  <span className="bg-slate-100 px-2 py-1 rounded">{children.length} linked plan entries</span>
+                  <button onClick={() => viewLinkMap(na.id)} className="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded flex items-center gap-1 transition-colors">
+                    {children.length} linked plan entries <ArrowUpRight className="w-3 h-3" />
+                  </button>
                   {targetMismatch
                     ? <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Target sum {childTarget.toLocaleString()} ≠ official {na.annual_target.toLocaleString()}</span>
                     : <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Target reconciled</span>}
@@ -134,7 +160,7 @@ export const PlanPage: React.FC = () => {
 
       {/* Conversion factors */}
       <section className="bg-white p-5 rounded-xl border shadow-sm space-y-3">
-        <div className="text-xs font-bold text-slate-800 uppercase tracking-wider border-b pb-3">Conversion Factors (UOM → Beneficiaries)</div>
+        <div className="text-xs font-bold text-slate-800 uppercase tracking-wider border-b pb-3">Conversion Factors (UoM → Beneficiaries)</div>
         <p className="text-[11px] text-slate-500 -mt-1">This is the multiplier the Report page uses to turn a reported Actual into Beneficiaries Reached.</p>
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {uomConfigs.map(cfg => (
@@ -202,8 +228,43 @@ export const PlanPage: React.FC = () => {
   );
 };
 
+// Thin wrapper so this file doesn't need a second import line duplicated —
+// keeps the existing FilterBar exactly as-is.
+/*const FilterBarWrapper: React.FC = () => {
+  const { FilterBar } = require('../components/common/FilterBar');
+  return <FilterBar showQuarter={false} />;
+};*/
+
 const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
-  const { uomConfigs, strategicPriorities } = useApp();
+  const { uomConfigs, strategicPriorities, regions, zones, addRegion, addZone } = useApp();
+
+  const [addingRegion, setAddingRegion] = useState(false);
+  const [newRegionName, setNewRegionName] = useState('');
+  const [addingZone, setAddingZone] = useState(false);
+  const [newZoneName, setNewZoneName] = useState('');
+
+  const zonesInScope = form.region_id ? zones.filter(z => z.region_id === form.region_id) : [];
+
+  const handleAddRegion = () => {
+    const name = newRegionName.trim();
+    if (!name) return;
+    const region: Region = { id: `reg-${Date.now()}`, name };
+    addRegion(region);
+    setForm((f: any) => ({ ...f, region_id: region.id, zone_id: undefined }));
+    setNewRegionName('');
+    setAddingRegion(false);
+  };
+
+  const handleAddZone = () => {
+    const name = newZoneName.trim();
+    if (!name || !form.region_id) return;
+    const zone: Zone = { id: `zone-${Date.now()}`, region_id: form.region_id, name };
+    addZone(zone);
+    setForm((f: any) => ({ ...f, zone_id: zone.id }));
+    setNewZoneName('');
+    setAddingZone(false);
+  };
+
   return (
     <ModalShell title={form.id ? 'Edit National Activity' : 'Add National Activity'} onClose={onClose}>
       <div className="grid grid-cols-2 gap-3">
@@ -220,19 +281,94 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
         </div>
         <LabeledInput label="Code" value={form.code || ''} onChange={v => setForm((f: any) => ({ ...f, code: v }))} placeholder="Activity 1.1.3" />
         <div>
-          <span className="block text-[10px] font-bold text-slate-500 mb-1">UOM</span>
+          <span className="block text-[10px] font-bold text-slate-500 mb-1">UoM</span>
           <select
             value={form.uom || ''}
             onChange={e => setForm((f: any) => ({ ...f, uom: e.target.value }))}
             className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-100"
           >
-            <option value="">Select UOM…</option>
+            <option value="">Select UoM…</option>
             {uomConfigs.map(cfg => <option key={cfg.uom} value={cfg.uom}>{cfg.uom}</option>)}
           </select>
         </div>
         <div className="col-span-2"><LabeledInput label="Description" value={form.description || ''} onChange={v => setForm((f: any) => ({ ...f, description: v }))} placeholder="What this activity delivers" /></div>
+
+        <div>
+          <span className="block text-[10px] font-bold text-slate-500 mb-1">Responsibility</span>
+          <select
+            value={form.responsibility || ''}
+            onChange={e => setForm((f: any) => ({ ...f, responsibility: e.target.value as Responsibility }))}
+            className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-100"
+          >
+            <option value="">Select Responsibility…</option>
+            {RESPONSIBILITY_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+
         <LabeledInput label="Annual Target" type="number" value={String(form.annual_target ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_target: v }))} />
         <LabeledInput label="Annual Budget (ETB)" type="number" value={String(form.annual_budget ?? '')} onChange={v => setForm((f: any) => ({ ...f, annual_budget: v }))} />
+
+        {/* Region */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="block text-[10px] font-bold text-slate-500">Region</span>
+            <button type="button" onClick={() => setAddingRegion(a => !a)} className="text-[10px] font-bold text-ercs-red">+ Add Region</button>
+          </div>
+          <select
+            value={form.region_id || ''}
+            onChange={e => setForm((f: any) => ({ ...f, region_id: e.target.value || undefined, zone_id: undefined }))}
+            className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-100"
+          >
+            <option value="">National (All Regions)</option>
+            {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          {addingRegion && (
+            <div className="mt-2 flex gap-1.5">
+              <input
+                value={newRegionName}
+                onChange={e => setNewRegionName(e.target.value)}
+                placeholder="New region name"
+                className="flex-1 text-xs border border-slate-200 rounded p-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-red-100"
+              />
+              <button type="button" onClick={handleAddRegion} className="px-2.5 py-1 rounded bg-ercs-red text-white text-[10px] font-bold">Add</button>
+            </div>
+          )}
+        </div>
+
+        {/* Zone */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="block text-[10px] font-bold text-slate-500">Zone</span>
+            <button
+              type="button"
+              disabled={!form.region_id}
+              onClick={() => setAddingZone(a => !a)}
+              className={`text-[10px] font-bold ${form.region_id ? 'text-ercs-red' : 'text-slate-300 cursor-not-allowed'}`}
+            >
+              + Add Zone
+            </button>
+          </div>
+          <select
+            value={form.zone_id || ''}
+            onChange={e => setForm((f: any) => ({ ...f, zone_id: e.target.value || undefined }))}
+            disabled={!form.region_id}
+            className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-100"
+          >
+            <option value="">{form.region_id ? 'All Zones' : 'Select a Region first'}</option>
+            {zonesInScope.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+          </select>
+          {addingZone && form.region_id && (
+            <div className="mt-2 flex gap-1.5">
+              <input
+                value={newZoneName}
+                onChange={e => setNewZoneName(e.target.value)}
+                placeholder="New zone name"
+                className="flex-1 text-xs border border-slate-200 rounded p-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-red-100"
+              />
+              <button type="button" onClick={handleAddZone} className="px-2.5 py-1 rounded bg-ercs-red text-white text-[10px] font-bold">Add</button>
+            </div>
+          )}
+        </div>
       </div>
       <button onClick={onSave} className="mt-4 w-full bg-ercs-red text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-2"><Save className="w-3.5 h-3.5" /> Save</button>
     </ModalShell>
