@@ -9,7 +9,7 @@ export const PlanPage: React.FC = () => {
   const {
     nationalActivities, addNationalActivity, updateNationalActivity, deleteNationalActivity,
     regions, projects, planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry,
-    uomConfigs, updateUomFactor, filters, getFilteredPlanEntries,
+    uomConfigs, filters, getFilteredPlanEntries,
   } = useApp();
 
   const [naForm, setNaForm] = useState<null | Partial<NationalActivity>>(null);
@@ -130,7 +130,7 @@ export const PlanPage: React.FC = () => {
               <div><div className="text-xs font-bold text-slate-800">{cfg.uom}</div><div className="text-[10px] text-slate-500">Beneficiaries per unit</div></div>
               <div className="flex items-center gap-1">
                 <span className="text-xs font-bold text-slate-400">×</span>
-                <input type="number" min="0" defaultValue={cfg.factor} onBlur={e => updateUomFactor(cfg.uom, Number(e.target.value) || 0)} className="w-14 text-center text-xs font-bold border-slate-200 rounded p-1.5 focus:ring-ercs-red" />
+                <span className="w-14 text-center text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded p-1.5">{cfg.factor}</span>
               </div>
             </div>
           ))}
