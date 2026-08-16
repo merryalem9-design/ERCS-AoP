@@ -106,7 +106,13 @@ const EntryRow: React.FC<{
   const planForQuarter = quarterlyPlans.find(qp => qp.plan_entry_id === entry.id && qp.quarter_id === quarter);
   const plannedTarget = planForQuarter?.target ?? 0;
   const plannedBudget = planForQuarter?.budget ?? 0;
-  const hasAnyQuarterlyPlan = quarterlyPlans.some(qp => qp.plan_entry_id === entry.id);
+  // FIX: this used to check "does this entry have a Quarterly Plan for ANY
+  // quarter", which meant an entry with Q1–Q3 filled in but Q4 left blank
+  // would show no warning at all when viewing Q4 — the warning was
+  // suppressed just because a sibling quarter happened to have data. It now
+  // checks the SPECIFIC quarter being viewed, matching what plannedTarget/
+  // plannedBudget above are actually reading.
+  const hasQuarterlyPlanForThisQuarter = !!planForQuarter;
   const quarterlyAchievement = achievementPct(actualVal, plannedTarget);
   const quarterlyBudgetUtil = budgetUtilizationPct(expVal, plannedBudget);
   const isOverBudget = quarterlyBudgetUtil > 100;
@@ -141,9 +147,9 @@ const EntryRow: React.FC<{
         </div>
       </div>
 
-      {!hasAnyQuarterlyPlan && (
+      {!hasQuarterlyPlanForThisQuarter && (
         <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[11px] text-amber-800 font-semibold">
-          <span className="flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> No Quarterly Plan set for this entry yet — quarterly achievement can't be measured until you add one.</span>
+          <span className="flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> No Quarterly Plan set for {quarter} yet — quarterly achievement can't be measured until you add one.</span>
           <button onClick={goToQuarterlyPlan} className="shrink-0 bg-amber-600 text-white px-2.5 py-1 rounded text-[10px] font-bold whitespace-nowrap">
             Go to Quarterly Plan
           </button>

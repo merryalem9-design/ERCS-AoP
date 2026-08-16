@@ -18,11 +18,16 @@ export const ReportPage: React.FC = () => {
 
   // Every National Activity can define its own UOM (Person, House Hold (HH), ...).
   // Summing raw Target/Actual across entries that don't share a UOM produces a
-  // number with no real unit — this tells the Achievement card whether that's
-  // happening in the current filter scope.
-  const uomsInScope = Array.from(new Set(
-    filteredEntries.map(e => nationalActivities.find(na => na.id === e.national_activity_id)?.uom).filter((u): u is string => !!u)
+  // number with no real unit. This helper is reused for the top KPI card AND
+  // every breakdown table below — a Region or Project can easily execute
+  // against National Activities with different UOMs (e.g. a project doing
+  // both training-in-Persons and distribution-in-Households), so the
+  // breakdown tables are just as exposed to this as the top card is.
+  const uomsFor = (es: typeof filteredEntries) => Array.from(new Set(
+    es.map(e => nationalActivities.find(na => na.id === e.national_activity_id)?.uom).filter((u): u is string => !!u)
   ));
+
+  const uomsInScope = uomsFor(filteredEntries);
   const singleUom = uomsInScope.length === 1 ? uomsInScope[0] : null;
 
   const beneficiariesFor = (entryIds: typeof filteredEntries) => entryIds.reduce((sum, e) => {
@@ -50,41 +55,57 @@ export const ReportPage: React.FC = () => {
     : 0;
 
   // Breakdown by Strategic Priority (respects current National Activity/Region/Project filter).
+  // Multiple National Activities can share a Strategic Priority while using
+  // different UOMs — exposed to the mixed-unit issue, so `uoms` is carried
+  // through and flagged by ReportTable below.
   const byStrategy = strategicPriorities
     .map(sp => {
       const naIds = nationalActivities.filter(na => na.strategic_priority_id === sp.id).map(na => na.id);
       const es = filteredEntries.filter(e => naIds.includes(e.national_activity_id));
       if (es.length === 0) return null;
       const t = sumPlannedTarget(es, quarterlyPlans, q), a = sumActual(es, quarterlyActuals, q), b = sumPlannedBudget(es, quarterlyPlans, q), x = sumExpenditure(es, quarterlyActuals, q);
-      return { key: sp.id, name: `${sp.code} — ${sp.name}`, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es) };
+      return { key: sp.id, name: `${sp.code} — ${sp.name}`, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es), uoms: uomsFor(es) };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
   // Breakdown by National Activity (respects current Strategic Priority/Region/Project filter).
+  // Never mixed-unit by construction — every Plan Entry here shares its
+  // parent National Activity's single uom — but `uoms` is still a
+  // single-element array so this row shape matches the others for the
+  // shared ReportTable component.
   const byNational = nationalActivities
     .map(na => {
       const es = filteredEntries.filter(e => e.national_activity_id === na.id);
       if (es.length === 0) return null;
       const t = sumPlannedTarget(es, quarterlyPlans, q), a = sumActual(es, quarterlyActuals, q), b = sumPlannedBudget(es, quarterlyPlans, q), x = sumExpenditure(es, quarterlyActuals, q);
-      return { key: na.id, name: na.code, uom: na.uom, officialTarget: na.annual_target, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es) };
+      return { key: na.id, name: na.code, officialTarget: na.annual_target, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es), uoms: [na.uom] };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
+  // A Region can execute against multiple National Activities that don't
+  // share a UOM (e.g. training measured in Persons alongside distribution
+  // measured in Households) — just as exposed to the mixed-unit issue as
+  // By Project below.
   const byRegion = regions
     .map(r => {
       const es = filteredEntries.filter(e => e.region_id === r.id);
       if (es.length === 0) return null;
       const t = sumPlannedTarget(es, quarterlyPlans, q), a = sumActual(es, quarterlyActuals, q), b = sumPlannedBudget(es, quarterlyPlans, q), x = sumExpenditure(es, quarterlyActuals, q);
-      return { key: r.id, name: r.name, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es) };
+      return { key: r.id, name: r.name, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es), uoms: uomsFor(es) };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
+  // Same reasoning as By Region: a Project (e.g. one NGO partner) can easily
+  // execute against several National Activities with different UOMs — this
+  // is the one that's LIVE with the current seed data (ECHO-HIP links both
+  // an Activity 1.1.8 entry in Persons and an Activity 1.2.1 entry in
+  // Households).
   const byProject = projects
     .map(p => {
       const es = filteredEntries.filter(e => e.project_id === p.id);
       if (es.length === 0) return null;
       const t = sumPlannedTarget(es, quarterlyPlans, q), a = sumActual(es, quarterlyActuals, q), b = sumPlannedBudget(es, quarterlyPlans, q), x = sumExpenditure(es, quarterlyActuals, q);
-      return { key: p.id, name: p.name, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es) };
+      return { key: p.id, name: p.name, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es), uoms: uomsFor(es) };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
@@ -143,7 +164,7 @@ export const ReportPage: React.FC = () => {
       </div>
 
       <ReportTable title="By Strategic Priority" rows={byStrategy} />
-      <ReportTable title="By National Activity" rows={byNational} extraColumn={{ label: 'Official Target (Annual)', get: r => `${r.officialTarget.toLocaleString()} ${r.uom}` }} />
+      <ReportTable title="By National Activity" rows={byNational} extraColumn={{ label: 'Official Target (Annual)', get: r => `${r.officialTarget.toLocaleString()} ${r.uoms[0]}` }} />
       <ReportTable title="By Region" rows={byRegion} />
       <ReportTable title="By Project" rows={byProject} />
     </div>
@@ -225,7 +246,7 @@ const BudgetKPICard: React.FC<{ utilization: number; spent: number; budget: numb
   );
 };
 
-interface Row { key: string; name: string; target: number; actual: number; achievement: number; budget: number; spent: number; beneficiaries: number; }
+interface Row { key: string; name: string; target: number; actual: number; achievement: number; budget: number; spent: number; beneficiaries: number; uoms: string[]; }
 
 const ReportTable: React.FC<{ title: string; rows: Row[]; extraColumn?: { label: string; get: (r: any) => string } }> = ({ title, rows, extraColumn }) => (
   <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
@@ -249,12 +270,24 @@ const ReportTable: React.FC<{ title: string; rows: Row[]; extraColumn?: { label:
         <tbody className="divide-y">
           {rows.map(r => {
             const rowBudgetUtil = budgetUtilizationPct(r.spent, r.budget);
+            const mixedUnits = r.uoms.length > 1;
+            const unitSuffix = r.uoms.length === 1 ? ` ${r.uoms[0]}` : '';
             return (
               <tr key={r.key} className="hover:bg-slate-50">
-                <td className="p-3 font-bold text-slate-800">{r.name}</td>
+                <td className="p-3 font-bold text-slate-800">
+                  <div>{r.name}</div>
+                  {mixedUnits && (
+                    <div
+                      className="mt-1 inline-flex items-center gap-1 text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
+                      title={`Mixed units (${r.uoms.join(', ')}) — Target, Actual and Achievement for this row sum raw counts across different UOMs and are not a real, comparable number.`}
+                    >
+                      ⚠ Mixed Units
+                    </div>
+                  )}
+                </td>
                 {extraColumn && <td className="p-3 text-right text-slate-500">{extraColumn.get(r)}</td>}
-                <td className="p-3 text-right">{r.target.toLocaleString()}</td>
-                <td className="p-3 text-right font-bold">{r.actual.toLocaleString()}</td>
+                <td className="p-3 text-right">{r.target.toLocaleString()}{unitSuffix}</td>
+                <td className="p-3 text-right font-bold">{r.actual.toLocaleString()}{unitSuffix}</td>
                 <td className="p-3 text-right font-black">{r.achievement.toFixed(1)}%</td>
                 <td className="p-3 text-right">{r.budget.toLocaleString()}</td>
                 <td className={`p-3 text-right font-bold ${rowBudgetUtil > 100 ? 'text-rose-600' : 'text-emerald-700'}`}>{r.spent.toLocaleString()}</td>
