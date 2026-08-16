@@ -2,7 +2,7 @@
 // STEP 3 of the pipeline — report the Actual achieved this quarter. Compared
 // against that quarter's Quarterly Plan (Step 2) for a "Quarterly
 // Achievement %", and still rolls up into a Cumulative Achievement against
-// the annual Plan Entry target (Step 1) for the year-to-date picture.
+// the annual target (Step 1) for the year-to-date picture.
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
@@ -109,6 +109,7 @@ const EntryRow: React.FC<{
   const hasAnyQuarterlyPlan = quarterlyPlans.some(qp => qp.plan_entry_id === entry.id);
   const quarterlyAchievement = achievementPct(actualVal, plannedTarget);
   const quarterlyBudgetUtil = budgetUtilizationPct(expVal, plannedBudget);
+  const isOverBudget = quarterlyBudgetUtil > 100;
 
   // quarterlyActuals already reflects the latest edit: sync() above updates context
   // state in the same batched event, so this stays accurate on every keystroke.
@@ -149,6 +150,12 @@ const EntryRow: React.FC<{
         </div>
       )}
 
+      {isOverBudget && (
+        <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 text-[11px] text-rose-800 font-semibold">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Over budget for {quarter}: ETB {expVal.toLocaleString()} spent against a planned ETB {plannedBudget.toLocaleString()}.
+        </div>
+      )}
+
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <label className="block text-[10px] font-bold text-slate-500 mb-1">Actual this quarter ({uom})</label>
@@ -156,7 +163,7 @@ const EntryRow: React.FC<{
         </div>
         <div>
           <label className="block text-[10px] font-bold text-slate-500 mb-1">Expenditure this quarter (ETB)</label>
-          <input type="number" min="0" value={expVal} onChange={e => handleExpChange(e.target.value)} className="w-36 text-xs p-2 border rounded" />
+          <input type="number" min="0" value={expVal} onChange={e => handleExpChange(e.target.value)} className={`w-36 text-xs p-2 border rounded ${isOverBudget ? 'border-rose-300 bg-rose-50' : ''}`} />
         </div>
 
         <div className="flex items-center gap-2 ml-auto flex-wrap">
@@ -173,6 +180,11 @@ const EntryRow: React.FC<{
             <div className="text-[9px] font-black uppercase tracking-wide text-indigo-700">{quarter} Achievement</div>
             <div className="text-sm font-black text-indigo-900">{quarterlyAchievement.toFixed(1)}%</div>
             <div className="text-[9px] text-indigo-600 mt-0.5">{actualVal.toLocaleString()} / {plannedTarget.toLocaleString()} {uom}</div>
+          </div>
+          <div className={`rounded-lg border px-3 py-2 text-center min-w-24 ${isOverBudget ? 'bg-rose-50 border-rose-200' : 'bg-purple-50 border-purple-100'}`}>
+            <div className={`text-[9px] font-black uppercase tracking-wide ${isOverBudget ? 'text-rose-700' : 'text-purple-700'}`}>{quarter} Budget</div>
+            <div className={`text-sm font-black ${isOverBudget ? 'text-rose-900' : 'text-purple-900'}`}>{quarterlyBudgetUtil.toFixed(1)}%</div>
+            <div className={`text-[9px] mt-0.5 ${isOverBudget ? 'text-rose-600' : 'text-purple-600'}`}>ETB {expVal.toLocaleString()} / {plannedBudget.toLocaleString()}</div>
           </div>
           <div className="rounded-lg bg-slate-50 border px-3 py-2 text-center min-w-24">
             <div className="text-[9px] font-black uppercase tracking-wide text-slate-500">Cumulative Ach.</div>

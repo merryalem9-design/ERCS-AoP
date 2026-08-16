@@ -3,8 +3,9 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
 import { StatusBadge } from '../components/common/StatusBadge';
+import { BudgetStatusBadge } from '../components/common/BudgetStatusBadge';
 import {
-  sumPlannedTarget, sumPlannedBudget, sumActual, sumExpenditure, achievementPct, budgetUtilizationPct, convertToBeneficiaries, getStatusBadge,
+  sumPlannedTarget, sumPlannedBudget, sumActual, sumExpenditure, achievementPct, budgetUtilizationPct, convertToBeneficiaries, getStatusBadge, getBudgetStatusBadge,
 } from '../utils/calculations';
 import { Target, Wallet, Users, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
@@ -119,7 +120,7 @@ export const ReportPage: React.FC = () => {
           singleUom={singleUom} uomsInScope={uomsInScope} hasActuals={actual > 0}
           missingPlanCount={missingQuarterlyPlanCount} quarterId={q !== 'ALL' ? q : ''}
         />
-        <KPICard title="Budget Utilization" val={`${utilization.toFixed(1)}%`} sub={`ETB ${spent.toLocaleString()} / ${budget.toLocaleString()}`} icon={Wallet} />
+        <BudgetKPICard utilization={utilization} spent={spent} budget={budget} hasSpend={spent > 0} />
         <KPICard title="Beneficiaries Reached" val={beneficiaries.toLocaleString()} sub="Actual × Conversion Factor" icon={Users} />
         <KPICard title="Plan Entries in Scope" val={String(filteredEntries.length)} sub="Matching current filters" icon={TrendingUp} />
       </div>
@@ -199,6 +200,31 @@ const AchievementKPICard: React.FC<{
   );
 };
 
+// Budget status is tracked as its own badge, independent from Achievement —
+// an activity can be behind on target while over budget, or ahead of target
+// while under budget, and collapsing the two would hide whichever loses.
+const BUDGET_TONE: Record<string, string> = {
+  'Over Budget': 'text-rose-600',
+  'Near Limit': 'text-amber-600',
+  'On Budget': 'text-emerald-600',
+  Planning: 'text-slate-800',
+};
+
+const BudgetKPICard: React.FC<{ utilization: number; spent: number; budget: number; hasSpend: boolean }> = ({ utilization, spent, budget, hasSpend }) => {
+  const badge = getBudgetStatusBadge(utilization, hasSpend);
+  const tone = BUDGET_TONE[badge.label] || 'text-slate-800';
+  return (
+    <div className="bg-white p-4 rounded-xl border shadow-sm">
+      <div className="flex justify-between mb-2 text-xs font-bold text-slate-500"><span>Budget Utilization</span><Wallet className="w-4 h-4" /></div>
+      <div className={`text-2xl font-black ${tone}`}>{utilization.toFixed(1)}%</div>
+      <div className="text-[10px] mt-1 text-slate-500">ETB {spent.toLocaleString()} / {budget.toLocaleString()}</div>
+      <div className="mt-2">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.color}`}>{badge.label}</span>
+      </div>
+    </div>
+  );
+};
+
 interface Row { key: string; name: string; target: number; actual: number; achievement: number; budget: number; spent: number; beneficiaries: number; }
 
 const ReportTable: React.FC<{ title: string; rows: Row[]; extraColumn?: { label: string; get: (r: any) => string } }> = ({ title, rows, extraColumn }) => (
@@ -217,23 +243,28 @@ const ReportTable: React.FC<{ title: string; rows: Row[]; extraColumn?: { label:
             <th className="p-3 text-right">Spent (ETB)</th>
             <th className="p-3 text-right">Beneficiaries</th>
             <th className="p-3 text-center">Status</th>
+            <th className="p-3 text-center">Budget Status</th>
           </tr>
         </thead>
         <tbody className="divide-y">
-          {rows.map(r => (
-            <tr key={r.key} className="hover:bg-slate-50">
-              <td className="p-3 font-bold text-slate-800">{r.name}</td>
-              {extraColumn && <td className="p-3 text-right text-slate-500">{extraColumn.get(r)}</td>}
-              <td className="p-3 text-right">{r.target.toLocaleString()}</td>
-              <td className="p-3 text-right font-bold">{r.actual.toLocaleString()}</td>
-              <td className="p-3 text-right font-black">{r.achievement.toFixed(1)}%</td>
-              <td className="p-3 text-right">{r.budget.toLocaleString()}</td>
-              <td className="p-3 text-right font-bold text-emerald-700">{r.spent.toLocaleString()}</td>
-              <td className="p-3 text-right font-black text-blue-600">{r.beneficiaries.toLocaleString()}</td>
-              <td className="p-3 text-center"><StatusBadge achievementPct={r.achievement} hasActuals={r.actual > 0} /></td>
-            </tr>
-          ))}
-          {rows.length === 0 && <tr><td colSpan={extraColumn ? 9 : 8} className="p-6 text-center text-slate-500">No data for this filter yet.</td></tr>}
+          {rows.map(r => {
+            const rowBudgetUtil = budgetUtilizationPct(r.spent, r.budget);
+            return (
+              <tr key={r.key} className="hover:bg-slate-50">
+                <td className="p-3 font-bold text-slate-800">{r.name}</td>
+                {extraColumn && <td className="p-3 text-right text-slate-500">{extraColumn.get(r)}</td>}
+                <td className="p-3 text-right">{r.target.toLocaleString()}</td>
+                <td className="p-3 text-right font-bold">{r.actual.toLocaleString()}</td>
+                <td className="p-3 text-right font-black">{r.achievement.toFixed(1)}%</td>
+                <td className="p-3 text-right">{r.budget.toLocaleString()}</td>
+                <td className={`p-3 text-right font-bold ${rowBudgetUtil > 100 ? 'text-rose-600' : 'text-emerald-700'}`}>{r.spent.toLocaleString()}</td>
+                <td className="p-3 text-right font-black text-blue-600">{r.beneficiaries.toLocaleString()}</td>
+                <td className="p-3 text-center"><StatusBadge achievementPct={r.achievement} hasActuals={r.actual > 0} /></td>
+                <td className="p-3 text-center"><BudgetStatusBadge utilizationPct={rowBudgetUtil} hasSpend={r.spent > 0} /></td>
+              </tr>
+            );
+          })}
+          {rows.length === 0 && <tr><td colSpan={extraColumn ? 10 : 9} className="p-6 text-center text-slate-500">No data for this filter yet.</td></tr>}
         </tbody>
       </table>
     </div>

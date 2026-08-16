@@ -6,6 +6,7 @@ import {
   sumPlannedTarget, sumPlannedBudget,
 } from '../utils/calculations';
 import { PlanEntry } from '../types';
+import { BudgetStatusBadge } from '../components/common/BudgetStatusBadge';
 import { ArrowLeft, Layers, Building2, FolderGit2, Plus, Target, Wallet, Users, CalendarClock } from 'lucide-react';
 
 export const NationalActivityDetailPage: React.FC = () => {
@@ -122,6 +123,7 @@ export const NationalActivityDetailPage: React.FC = () => {
           <div className="flex justify-between mb-1 text-xs font-bold text-slate-500"><span>Budget Utilization</span><Wallet className="w-4 h-4" /></div>
           <div className="text-2xl font-black mt-1">{util.toFixed(1)}%</div>
           <div className="text-xs text-slate-500 mt-1">Spent: <b>ETB {spent.toLocaleString()}</b> / <b>ETB {budget.toLocaleString()}</b></div>
+          <div className="mt-2"><BudgetStatusBadge utilizationPct={util} hasSpend={spent > 0} /></div>
         </div>
         <div className="bg-white p-5 rounded-xl border shadow-sm">
           <div className="flex justify-between mb-1 text-xs font-bold text-slate-500"><span>Contributing Entries</span><Layers className="w-4 h-4" /></div>
@@ -167,8 +169,8 @@ export const NationalActivityDetailPage: React.FC = () => {
                     <td className="p-2 text-right font-bold">{actualQ.toLocaleString()}</td>
                     <td className="p-2 text-right font-black">{achQ.toFixed(1)}%</td>
                     <td className="p-2 text-right">ETB {plannedB.toLocaleString()}</td>
-                    <td className="p-2 text-right text-emerald-700 font-bold">ETB {spentQ.toLocaleString()}</td>
-                    <td className="p-2 text-right font-black">{utilQ.toFixed(1)}%</td>
+                    <td className={`p-2 text-right font-bold ${utilQ > 100 ? 'text-rose-600' : 'text-emerald-700'}`}>ETB {spentQ.toLocaleString()}</td>
+                    <td className={`p-2 text-right font-black ${utilQ > 100 ? 'text-rose-600' : ''}`}>{utilQ.toFixed(1)}%{utilQ > 100 ? ' ⚠' : ''}</td>
                   </tr>
                 );
               })}

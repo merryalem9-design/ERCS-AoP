@@ -98,6 +98,12 @@ export const convertToBeneficiaries = (
   return actual * (config ? config.factor : 0);
 };
 
+/**
+ * Achievement status — tracks physical progress (Actual vs Target).
+ * Deliberately independent from budget status: an activity can be behind on
+ * target while over budget, or ahead of target while under budget. Collapsing
+ * the two into a single badge would hide whichever signal lost.
+ */
 export const getStatusBadge = (achievement: number, hasActuals: boolean) => {
   if (!hasActuals) return { label: 'Planning', color: 'bg-slate-100 text-slate-700 border-slate-300' };
   if (achievement > 100) return { label: 'Overachieved', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' };
@@ -105,4 +111,16 @@ export const getStatusBadge = (achievement: number, hasActuals: boolean) => {
   if (achievement >= 85) return { label: 'On Track', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
   if (achievement >= 60) return { label: 'At Risk', color: 'bg-amber-100 text-amber-800 border-amber-300' };
   return { label: 'Behind', color: 'bg-rose-100 text-rose-800 border-rose-300' };
+};
+
+/**
+ * Budget status — tracks financial spend (Spent vs Budget). Kept as its own
+ * badge, on purpose, rather than folded into getStatusBadge: physical
+ * progress and financial spend are two different axes and can disagree.
+ */
+export const getBudgetStatusBadge = (utilizationPct: number, hasSpend: boolean) => {
+  if (!hasSpend) return { label: 'Planning', color: 'bg-slate-100 text-slate-700 border-slate-300' };
+  if (utilizationPct > 100) return { label: 'Over Budget', color: 'bg-rose-100 text-rose-800 border-rose-300' };
+  if (utilizationPct >= 90) return { label: 'Near Limit', color: 'bg-amber-100 text-amber-800 border-amber-300' };
+  return { label: 'On Budget', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
 };
