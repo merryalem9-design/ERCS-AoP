@@ -1,15 +1,16 @@
+// src/pages/ReportPage.tsx
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
 import { StatusBadge } from '../components/common/StatusBadge';
 import {
-  sumTarget, sumBudget, sumActual, sumExpenditure, achievementPct, budgetUtilizationPct, convertToBeneficiaries, getStatusBadge,
+  sumPlannedTarget, sumPlannedBudget, sumActual, sumExpenditure, achievementPct, budgetUtilizationPct, convertToBeneficiaries, getStatusBadge,
 } from '../utils/calculations';
 import { Target, Wallet, Users, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 export const ReportPage: React.FC = () => {
-  const { strategicPriorities, nationalActivities, regions, projects, quarterlyActuals, uomConfigs, filters, getFilteredPlanEntries } = useApp();
+  const { strategicPriorities, nationalActivities, regions, projects, quarterlyPlans, quarterlyActuals, uomConfigs, filters, getFilteredPlanEntries } = useApp();
 
   const filteredEntries = getFilteredPlanEntries();
   const q = filters.quarterId;
@@ -29,13 +30,23 @@ export const ReportPage: React.FC = () => {
     return sum + convertToBeneficiaries(actual, na?.uom || '', uomConfigs);
   }, 0);
 
-  const target = sumTarget(filteredEntries);
+  // Quarter-aware: when a specific quarter is selected, target/budget come
+  // from that quarter's Quarterly Plan instead of the full annual figure —
+  // otherwise "Q1 Actual vs full-year Target" understates achievement.
+  const target = sumPlannedTarget(filteredEntries, quarterlyPlans, q);
   const actual = sumActual(filteredEntries, quarterlyActuals, q);
   const achievement = achievementPct(actual, target);
-  const budget = sumBudget(filteredEntries);
+  const budget = sumPlannedBudget(filteredEntries, quarterlyPlans, q);
   const spent = sumExpenditure(filteredEntries, quarterlyActuals, q);
   const utilization = budgetUtilizationPct(spent, budget);
   const beneficiaries = beneficiariesFor(filteredEntries);
+
+  // How many entries in scope have no Quarterly Plan set for the selected
+  // quarter — surfaced so a 0-planned entry doesn't silently read as
+  // "planned to reach zero" in the aggregate above.
+  const missingQuarterlyPlanCount = (q && q !== 'ALL')
+    ? filteredEntries.filter(e => !quarterlyPlans.some(qp => qp.plan_entry_id === e.id && qp.quarter_id === q)).length
+    : 0;
 
   // Breakdown by Strategic Priority (respects current National Activity/Region/Project filter).
   const byStrategy = strategicPriorities
@@ -43,7 +54,7 @@ export const ReportPage: React.FC = () => {
       const naIds = nationalActivities.filter(na => na.strategic_priority_id === sp.id).map(na => na.id);
       const es = filteredEntries.filter(e => naIds.includes(e.national_activity_id));
       if (es.length === 0) return null;
-      const t = sumTarget(es), a = sumActual(es, quarterlyActuals, q), b = sumBudget(es), x = sumExpenditure(es, quarterlyActuals, q);
+      const t = sumPlannedTarget(es, quarterlyPlans, q), a = sumActual(es, quarterlyActuals, q), b = sumPlannedBudget(es, quarterlyPlans, q), x = sumExpenditure(es, quarterlyActuals, q);
       return { key: sp.id, name: `${sp.code} — ${sp.name}`, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es) };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -53,7 +64,7 @@ export const ReportPage: React.FC = () => {
     .map(na => {
       const es = filteredEntries.filter(e => e.national_activity_id === na.id);
       if (es.length === 0) return null;
-      const t = sumTarget(es), a = sumActual(es, quarterlyActuals, q), b = sumBudget(es), x = sumExpenditure(es, quarterlyActuals, q);
+      const t = sumPlannedTarget(es, quarterlyPlans, q), a = sumActual(es, quarterlyActuals, q), b = sumPlannedBudget(es, quarterlyPlans, q), x = sumExpenditure(es, quarterlyActuals, q);
       return { key: na.id, name: na.code, uom: na.uom, officialTarget: na.annual_target, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es) };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -62,7 +73,7 @@ export const ReportPage: React.FC = () => {
     .map(r => {
       const es = filteredEntries.filter(e => e.region_id === r.id);
       if (es.length === 0) return null;
-      const t = sumTarget(es), a = sumActual(es, quarterlyActuals, q), b = sumBudget(es), x = sumExpenditure(es, quarterlyActuals, q);
+      const t = sumPlannedTarget(es, quarterlyPlans, q), a = sumActual(es, quarterlyActuals, q), b = sumPlannedBudget(es, quarterlyPlans, q), x = sumExpenditure(es, quarterlyActuals, q);
       return { key: r.id, name: r.name, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es) };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -71,32 +82,43 @@ export const ReportPage: React.FC = () => {
     .map(p => {
       const es = filteredEntries.filter(e => e.project_id === p.id);
       if (es.length === 0) return null;
-      const t = sumTarget(es), a = sumActual(es, quarterlyActuals, q), b = sumBudget(es), x = sumExpenditure(es, quarterlyActuals, q);
+      const t = sumPlannedTarget(es, quarterlyPlans, q), a = sumActual(es, quarterlyActuals, q), b = sumPlannedBudget(es, quarterlyPlans, q), x = sumExpenditure(es, quarterlyActuals, q);
       return { key: p.id, name: p.name, target: t, actual: a, achievement: achievementPct(a, t), budget: b, spent: x, beneficiaries: beneficiariesFor(es) };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
-  // Chart drills down to plan-entry level once a single National Activity is selected.
+  // Chart drills down to plan-entry level once a single National Activity is
+  // selected — also quarter-aware for the same reason as the KPIs above.
   const chartData = filters.nationalActivityId !== 'ALL'
     ? filteredEntries.map(e => {
         const label = e.scope_type === 'Regional' ? regions.find(r => r.id === e.region_id)?.name : projects.find(p => p.id === e.project_id)?.name;
-        return { name: label || e.id, Target: e.annual_target, Actual: sumActual([e], quarterlyActuals, q) };
+        const plannedTarget = q && q !== 'ALL'
+          ? (quarterlyPlans.find(qp => qp.plan_entry_id === e.id && qp.quarter_id === q)?.target || 0)
+          : e.annual_target;
+        return { name: label || e.id, Target: plannedTarget, Actual: sumActual([e], quarterlyActuals, q) };
       })
     : byNational.map(row => ({ name: row.name, Target: row.target, Actual: row.actual }));
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-black text-slate-800">Step 3 — Aggregated Report</h2>
+        <h2 className="text-xl font-black text-slate-800">Step 4 — Aggregated Report</h2>
         <p className="text-xs text-slate-500 mt-1">
-          Everything below is derived live from the Plan and Quarterly Entry pages: Actual × Conversion Factor = Beneficiaries, summed up by Strategic Priority, National Activity, Region and Project.
+          Everything below is derived live from the Plan, Quarterly Plan and Quarterly Actual Entry pages. When a
+          specific quarter is selected, Achievement and Budget Utilization compare against that quarter's
+          Quarterly Plan rather than the full annual target — otherwise summed up by Strategic Priority, National
+          Activity, Region and Project.
         </p>
       </div>
 
       <FilterBar />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <AchievementKPICard achievement={achievement} actual={actual} target={target} singleUom={singleUom} uomsInScope={uomsInScope} hasActuals={actual > 0} />
+        <AchievementKPICard
+          achievement={achievement} actual={actual} target={target}
+          singleUom={singleUom} uomsInScope={uomsInScope} hasActuals={actual > 0}
+          missingPlanCount={missingQuarterlyPlanCount} quarterId={q !== 'ALL' ? q : ''}
+        />
         <KPICard title="Budget Utilization" val={`${utilization.toFixed(1)}%`} sub={`ETB ${spent.toLocaleString()} / ${budget.toLocaleString()}`} icon={Wallet} />
         <KPICard title="Beneficiaries Reached" val={beneficiaries.toLocaleString()} sub="Actual × Conversion Factor" icon={Users} />
         <KPICard title="Plan Entries in Scope" val={String(filteredEntries.length)} sub="Matching current filters" icon={TrendingUp} />
@@ -120,7 +142,7 @@ export const ReportPage: React.FC = () => {
       </div>
 
       <ReportTable title="By Strategic Priority" rows={byStrategy} />
-      <ReportTable title="By National Activity" rows={byNational} extraColumn={{ label: 'Official Target', get: r => `${r.officialTarget.toLocaleString()} ${r.uom}` }} />
+      <ReportTable title="By National Activity" rows={byNational} extraColumn={{ label: 'Official Target (Annual)', get: r => `${r.officialTarget.toLocaleString()} ${r.uom}` }} />
       <ReportTable title="By Region" rows={byRegion} />
       <ReportTable title="By Project" rows={byProject} />
     </div>
@@ -149,7 +171,8 @@ const ACHIEVEMENT_TONE: Record<string, string> = {
 
 const AchievementKPICard: React.FC<{
   achievement: number; actual: number; target: number; singleUom: string | null; uomsInScope: string[]; hasActuals: boolean;
-}> = ({ achievement, actual, target, singleUom, uomsInScope, hasActuals }) => {
+  missingPlanCount: number; quarterId: string;
+}> = ({ achievement, actual, target, singleUom, uomsInScope, hasActuals, missingPlanCount, quarterId }) => {
   const badge = getStatusBadge(achievement, hasActuals);
   const tone = ACHIEVEMENT_TONE[badge.label] || 'text-slate-800';
   return (
@@ -165,6 +188,11 @@ const AchievementKPICard: React.FC<{
       {uomsInScope.length > 1 && (
         <div className="mt-2 text-[9px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 font-semibold">
           ⚠ Mixed units in scope ({uomsInScope.join(', ')}) — this % sums raw counts across different UOMs and is not a real unit. Filter to one National Activity for a precise reading.
+        </div>
+      )}
+      {missingPlanCount > 0 && (
+        <div className="mt-2 text-[9px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 font-semibold">
+          ⚠ {missingPlanCount} plan {missingPlanCount === 1 ? 'entry has' : 'entries have'} no {quarterId} Quarterly Plan set — counted as 0 planned in this comparison.
         </div>
       )}
     </div>

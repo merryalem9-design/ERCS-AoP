@@ -3,15 +3,16 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import {
   sumTarget, sumBudget, sumActual, sumExpenditure, achievementPct, budgetUtilizationPct, convertToBeneficiaries,
+  sumPlannedTarget, sumPlannedBudget,
 } from '../utils/calculations';
 import { PlanEntry } from '../types';
-import { ArrowLeft, Layers, Building2, FolderGit2, Plus, Target, Wallet, Users } from 'lucide-react';
+import { ArrowLeft, Layers, Building2, FolderGit2, Plus, Target, Wallet, Users, CalendarClock } from 'lucide-react';
 
 export const NationalActivityDetailPage: React.FC = () => {
   const {
     selectedNationalActivityId, setActiveRoute, setFilters, setPendingAddPlanNationalActivityId,
     strategicPriorities, nationalActivities, regions, zones, projects,
-    planEntries, quarterlyActuals, uomConfigs,
+    planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, quarters,
   } = useApp();
 
   const na = nationalActivities.find(n => n.id === selectedNationalActivityId) || nationalActivities[0];
@@ -47,9 +48,8 @@ export const NationalActivityDetailPage: React.FC = () => {
     0
   );
 
-  // Clicking a linked entry jumps to Quarterly Entry, pre-filtered down to
-  // just that Region/Project under this National Activity, so the person
-  // lands exactly on the data they came here to edit.
+  // Clicking a linked entry jumps to Quarterly Actual Entry, pre-filtered
+  // down to just that Region/Project under this National Activity.
   const goToChild = (pe: PlanEntry) => {
     setFilters(prev => ({
       ...prev,
@@ -61,26 +61,37 @@ export const NationalActivityDetailPage: React.FC = () => {
     setActiveRoute('quarterly');
   };
 
-  // "+ Add Plan Entry" here hands off to the Plan page's Add Plan wizard,
+  // "+ Add Plan Entry" hands off to the Plan page's Add Plan wizard,
   // pre-linked to THIS National Activity and opened directly at the
-  // execution-details step — not just a filtered navigate that still needs
-  // a second manual click. setPendingAddPlanNationalActivityId is consumed
-  // by PlanPage on mount (see its useEffect) and cleared immediately after.
+  // execution-details step.
   const addLinkedEntry = () => {
     setFilters(prev => ({ ...prev, nationalActivityId: na.id }));
     setPendingAddPlanNationalActivityId(na.id);
     setActiveRoute('plan');
   };
 
+  // "Quarterly Plan" jumps to Step 2, pre-filtered to this National
+  // Activity's linked entries, so the person lands exactly where they need
+  // to break this activity's figures into quarters.
+  const goToQuarterlyPlan = () => {
+    setFilters(prev => ({ ...prev, nationalActivityId: na.id, regionId: 'ALL', projectId: 'ALL' }));
+    setActiveRoute('quarterly-plan');
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <button onClick={() => setActiveRoute('plan')} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-ercs-red">
           <ArrowLeft className="w-4 h-4" /> Back to Plan
         </button>
-        <button onClick={addLinkedEntry} className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-          <Plus className="w-3.5 h-3.5" /> Add Plan Entry
-        </button>
+        <div className="flex gap-2">
+          <button onClick={goToQuarterlyPlan} className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold">
+            <CalendarClock className="w-3.5 h-3.5" /> Quarterly Plan
+          </button>
+          <button onClick={addLinkedEntry} className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+            <Plus className="w-3.5 h-3.5" /> Add Plan Entry
+          </button>
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-xl border shadow-sm space-y-2">
@@ -122,6 +133,49 @@ export const NationalActivityDetailPage: React.FC = () => {
           <div className="text-2xl font-black mt-1">{beneficiaries.toLocaleString()}</div>
           <div className="text-xs text-slate-500 mt-1">People reached</div>
         </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-xl border shadow-sm space-y-4">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
+          <CalendarClock className="w-4 h-4 text-ercs-red" /><span>Quarterly Plan vs Actual</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50 text-slate-600 font-bold uppercase border-b">
+              <tr>
+                <th className="p-2">Quarter</th>
+                <th className="p-2 text-right">Planned Target</th>
+                <th className="p-2 text-right">Actual</th>
+                <th className="p-2 text-right">Achievement</th>
+                <th className="p-2 text-right">Planned Budget</th>
+                <th className="p-2 text-right">Spent</th>
+                <th className="p-2 text-right">Budget Util.</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {quarters.map(q => {
+                const plannedT = sumPlannedTarget(children, quarterlyPlans, q.id);
+                const actualQ = sumActual(children, quarterlyActuals, q.id);
+                const achQ = achievementPct(actualQ, plannedT);
+                const plannedB = sumPlannedBudget(children, quarterlyPlans, q.id);
+                const spentQ = sumExpenditure(children, quarterlyActuals, q.id);
+                const utilQ = budgetUtilizationPct(spentQ, plannedB);
+                return (
+                  <tr key={q.id} className="hover:bg-slate-50">
+                    <td className="p-2 font-bold">{q.label}</td>
+                    <td className="p-2 text-right">{plannedT.toLocaleString()} {na.uom}</td>
+                    <td className="p-2 text-right font-bold">{actualQ.toLocaleString()}</td>
+                    <td className="p-2 text-right font-black">{achQ.toFixed(1)}%</td>
+                    <td className="p-2 text-right">ETB {plannedB.toLocaleString()}</td>
+                    <td className="p-2 text-right text-emerald-700 font-bold">ETB {spentQ.toLocaleString()}</td>
+                    <td className="p-2 text-right font-black">{utilQ.toFixed(1)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] text-slate-400">Planned figures come from the Quarterly Plan page. A planned value of 0 means no quarterly plan has been set yet for that quarter.</p>
       </div>
 
       <div className="bg-white p-6 rounded-xl border shadow-sm space-y-6">

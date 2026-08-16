@@ -1,10 +1,14 @@
 // src/pages/QuarterlyEntryPage.tsx
+// STEP 3 of the pipeline — report the Actual achieved this quarter. Compared
+// against that quarter's Quarterly Plan (Step 2) for a "Quarterly
+// Achievement %", and still rolls up into a Cumulative Achievement against
+// the annual Plan Entry target (Step 1) for the year-to-date picture.
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
-import { achievementPct, convertToBeneficiaries, sumActual } from '../utils/calculations';
+import { achievementPct, budgetUtilizationPct, convertToBeneficiaries, sumActual } from '../utils/calculations';
 import { PlanEntry, QuarterId } from '../types';
-import { ArrowRight } from 'lucide-react';
+import { AlertTriangle, ArrowRight } from 'lucide-react';
 
 export const QuarterlyEntryPage: React.FC = () => {
   const { nationalActivities, regions, projects, quarters, getFilteredPlanEntries } = useApp();
@@ -15,10 +19,12 @@ export const QuarterlyEntryPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-black text-slate-800">Step 2 — Quarterly Report Data Entry</h2>
+        <h2 className="text-xl font-black text-slate-800">Step 3 — Quarterly Actual Entry</h2>
         <p className="text-xs text-slate-500 mt-1">
-          Enter the Actual value achieved this quarter for each plan entry. The Beneficiaries figure converts live as you type,
-          and everything flows straight into the Report page.
+          Enter the Actual value achieved this quarter for each plan entry. It's compared against that quarter's
+          Quarterly Plan (set on the previous step) for a Quarterly Achievement %, and still rolls up into the
+          Cumulative Achievement against the annual target. Beneficiaries convert live as you type, and everything
+          flows straight into the Report page.
         </p>
       </div>
 
@@ -56,11 +62,9 @@ export const QuarterlyEntryPage: React.FC = () => {
 // Number inputs' min="0" is only a UI hint — the browser does not stop the
 // value "-100" from being typed and committed. Without this clamp, a
 // negative Actual or Expenditure flows straight into quarterlyActuals and
-// from there into every downstream number in the app: cumulative
-// achievement % here, Target vs Actual / Budget Utilization / Beneficiaries
-// on the National Activity Detail page, and every KPI, chart and table on
-// the Report page. Clamping here — the single place these values are
-// written — is what guarantees they can never go negative anywhere else.
+// from there into every downstream number: achievement %s here, Target vs
+// Actual / Budget Utilization / Beneficiaries on the Detail page, and every
+// KPI, chart and table on the Report page.
 const clampNonNegative = (raw: string): number => {
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
@@ -69,7 +73,7 @@ const clampNonNegative = (raw: string): number => {
 const EntryRow: React.FC<{
   entry: PlanEntry; quarter: QuarterId; nationalActivityCode: string; uom: string; scopeLabel?: string;
 }> = ({ entry, quarter, nationalActivityCode, uom, scopeLabel }) => {
-  const { quarterlyActuals, upsertQuarterlyActual, uomConfigs } = useApp();
+  const { quarterlyActuals, upsertQuarterlyActual, quarterlyPlans, uomConfigs, setFilters, setActiveRoute } = useApp();
   const existing = quarterlyActuals.find(a => a.plan_entry_id === entry.id && a.quarter_id === quarter);
   const [actualVal, setActualVal] = useState<number>(existing?.actual ?? 0);
   const [expVal, setExpVal] = useState<number>(existing?.expenditure ?? 0);
@@ -97,11 +101,30 @@ const EntryRow: React.FC<{
     sync(actualVal, v);
   };
 
+  // THE COMPARISON THE USER ASKED FOR: this quarter's Actual measured
+  // against this quarter's Quarterly Plan (Step 2) — not the annual target.
+  const planForQuarter = quarterlyPlans.find(qp => qp.plan_entry_id === entry.id && qp.quarter_id === quarter);
+  const plannedTarget = planForQuarter?.target ?? 0;
+  const plannedBudget = planForQuarter?.budget ?? 0;
+  const hasAnyQuarterlyPlan = quarterlyPlans.some(qp => qp.plan_entry_id === entry.id);
+  const quarterlyAchievement = achievementPct(actualVal, plannedTarget);
+  const quarterlyBudgetUtil = budgetUtilizationPct(expVal, plannedBudget);
+
   // quarterlyActuals already reflects the latest edit: sync() above updates context
   // state in the same batched event, so this stays accurate on every keystroke.
   const cumulativeActual = sumActual([entry], quarterlyActuals);
   const cumulativeAchievement = achievementPct(cumulativeActual, entry.annual_target);
   const beneficiariesThisQuarter = convertToBeneficiaries(actualVal, uom, uomConfigs);
+
+  const goToQuarterlyPlan = () => {
+    setFilters(prev => ({
+      ...prev,
+      nationalActivityId: entry.national_activity_id,
+      regionId: entry.scope_type === 'Regional' ? (entry.region_id || 'ALL') : 'ALL',
+      projectId: entry.scope_type === 'Project' ? (entry.project_id || 'ALL') : 'ALL',
+    }));
+    setActiveRoute('quarterly-plan');
+  };
 
   return (
     <div className="bg-white p-5 rounded-xl border shadow-sm space-y-3">
@@ -111,8 +134,20 @@ const EntryRow: React.FC<{
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${entry.scope_type === 'Regional' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{entry.scope_type}</span>
           <span className="ml-2 text-xs font-bold text-slate-800">{scopeLabel}</span>
         </div>
-        <div className="text-[10px] bg-slate-100 px-2 py-1 rounded font-semibold">Annual Target: {entry.annual_target.toLocaleString()} {uom}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] bg-slate-100 px-2 py-1 rounded font-semibold whitespace-nowrap">Annual Target: {entry.annual_target.toLocaleString()} {uom}</div>
+          <div className="text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded font-semibold whitespace-nowrap">Planned {quarter}: {plannedTarget.toLocaleString()} {uom} · ETB {plannedBudget.toLocaleString()}</div>
+        </div>
       </div>
+
+      {!hasAnyQuarterlyPlan && (
+        <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[11px] text-amber-800 font-semibold">
+          <span className="flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> No Quarterly Plan set for this entry yet — quarterly achievement can't be measured until you add one.</span>
+          <button onClick={goToQuarterlyPlan} className="shrink-0 bg-amber-600 text-white px-2.5 py-1 rounded text-[10px] font-bold whitespace-nowrap">
+            Go to Quarterly Plan
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-end gap-4">
         <div>
@@ -124,7 +159,7 @@ const EntryRow: React.FC<{
           <input type="number" min="0" value={expVal} onChange={e => handleExpChange(e.target.value)} className="w-36 text-xs p-2 border rounded" />
         </div>
 
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-2 ml-auto flex-wrap">
           <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-center">
             <div className="text-[9px] font-black uppercase tracking-wide text-blue-700">Conversion</div>
             <div className="text-xs font-bold text-blue-900">{actualVal} {uom} × factor</div>
@@ -134,9 +169,15 @@ const EntryRow: React.FC<{
             <div className="text-[9px] font-black uppercase tracking-wide text-emerald-700">Beneficiaries (Q)</div>
             <div className="text-sm font-black text-emerald-900">{beneficiariesThisQuarter.toLocaleString()}</div>
           </div>
+          <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 text-center min-w-24">
+            <div className="text-[9px] font-black uppercase tracking-wide text-indigo-700">{quarter} Achievement</div>
+            <div className="text-sm font-black text-indigo-900">{quarterlyAchievement.toFixed(1)}%</div>
+            <div className="text-[9px] text-indigo-600 mt-0.5">{actualVal.toLocaleString()} / {plannedTarget.toLocaleString()} {uom}</div>
+          </div>
           <div className="rounded-lg bg-slate-50 border px-3 py-2 text-center min-w-24">
             <div className="text-[9px] font-black uppercase tracking-wide text-slate-500">Cumulative Ach.</div>
             <div className="text-sm font-black text-slate-800">{cumulativeAchievement.toFixed(1)}%</div>
+            <div className="text-[9px] text-slate-400 mt-0.5">vs annual target</div>
           </div>
         </div>
       </div>

@@ -1,10 +1,12 @@
+// src/components/common/Sidebar.tsx
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { ClipboardList, CalendarCheck2, BarChart3, ShieldPlus } from 'lucide-react';
+import { ClipboardList, CalendarClock, CalendarCheck2, BarChart3, ShieldPlus } from 'lucide-react';
 
 const NAV = [
   { id: 'plan', label: 'Plan', sub: 'Annual plan data entry', icon: ClipboardList },
-  { id: 'quarterly', label: 'Quarterly Report Entry', sub: 'Actuals & conversion', icon: CalendarCheck2 },
+  { id: 'quarterly-plan', label: 'Quarterly Plan', sub: 'Split targets into Q1–Q4', icon: CalendarClock },
+  { id: 'quarterly', label: 'Quarterly Actual Entry', sub: 'Actuals vs quarterly plan', icon: CalendarCheck2 },
   { id: 'report', label: 'Report', sub: 'Aggregated results', icon: BarChart3 },
 ];
 
@@ -27,9 +29,9 @@ export const Sidebar: React.FC = () => {
       </div>
 
       <div className="mx-3 my-3 p-2.5 rounded bg-slate-800/80 border border-slate-700/50 text-[10px] text-slate-400 leading-relaxed">
-        Follow the pipeline in order: enter the <b className="text-white">Plan</b>, report{' '}
-        <b className="text-white">Quarterly</b> actuals, then view the aggregated{' '}
-        <b className="text-white">Report</b>.
+        Follow the pipeline in order: enter the <b className="text-white">Plan</b>, split it into a{' '}
+        <b className="text-white">Quarterly Plan</b>, report <b className="text-white">Quarterly</b> actuals
+        against it, then view the aggregated <b className="text-white">Report</b>.
       </div>
 
       <nav className="flex-1 px-2 py-2 space-y-1 text-xs font-medium">

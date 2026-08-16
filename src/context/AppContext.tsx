@@ -1,11 +1,11 @@
 // src/context/AppContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
-  StrategicPriority, NationalActivity, Region, Zone, Project, PlanEntry, Quarter, QuarterlyActual, UomFactorConfig, FilterState,
+  StrategicPriority, NationalActivity, Region, Zone, Project, PlanEntry, Quarter, QuarterlyPlan, QuarterlyActual, UomFactorConfig, FilterState,
 } from '../types';
 import {
   INITIAL_STRATEGIC_PRIORITIES, INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_ZONES, INITIAL_PROJECTS, INITIAL_PLAN_ENTRIES,
-  FISCAL_QUARTERS, INITIAL_QUARTERLY_ACTUALS, INITIAL_UOM_CONFIGS,
+  FISCAL_QUARTERS, INITIAL_QUARTERLY_PLANS, INITIAL_QUARTERLY_ACTUALS, INITIAL_UOM_CONFIGS,
 } from '../data/seedData';
 import { sumTarget, sumBudget } from '../utils/calculations';
 
@@ -20,9 +20,7 @@ interface AppContextType {
   // National Activity right now." Set by NationalActivityDetailPage's
   // "+ Add Plan Entry" button before it navigates to the Plan page; consumed
   // and cleared by PlanPage on mount, which opens the Add Plan wizard
-  // directly at Step 2 with the parent already locked in. This is what makes
-  // that button an actual one-click "add and link" action instead of just a
-  // navigate + filter that still requires a second manual click.
+  // directly at Step 2 with the parent already locked in.
   pendingAddPlanNationalActivityId: string | null;
   setPendingAddPlanNationalActivityId: (id: string | null) => void;
 
@@ -46,6 +44,10 @@ interface AppContextType {
   addPlanEntry: (pe: PlanEntry) => void;
   updatePlanEntry: (pe: PlanEntry) => void;
   deletePlanEntry: (id: string) => void;
+
+  // Step 2 of the pipeline: Q1–Q4 breakdown of a Plan Entry's annual figure.
+  quarterlyPlans: QuarterlyPlan[];
+  upsertQuarterlyPlan: (qp: QuarterlyPlan) => void;
 
   quarterlyActuals: QuarterlyActual[];
   upsertQuarterlyActual: (qa: QuarterlyActual) => void;
@@ -91,6 +93,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [projects] = useState<Project[]>(INITIAL_PROJECTS);
   const [quarters] = useState<Quarter[]>(FISCAL_QUARTERS);
   const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => readPersisted('planEntries', INITIAL_PLAN_ENTRIES));
+  const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>(() => readPersisted('quarterlyPlans', INITIAL_QUARTERLY_PLANS));
   const [quarterlyActuals, setQuarterlyActuals] = useState<QuarterlyActual[]>(() => readPersisted('quarterlyActuals', INITIAL_QUARTERLY_ACTUALS));
   const [uomConfigs, setUomConfigs] = useState<UomFactorConfig[]>(() => readPersisted('uomConfigs', INITIAL_UOM_CONFIGS));
   const [filters, setFilters] = useState<FilterState>(() => ({ ...DEFAULT_FILTERS, ...readPersisted('filters', DEFAULT_FILTERS) }));
@@ -99,12 +102,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (typeof window === 'undefined') return;
     try {
       window.localStorage.setItem(PERSISTENCE_KEY, JSON.stringify({
-        activeRoute, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyActuals, uomConfigs, filters,
+        activeRoute, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters,
       }));
     } catch {
       // localStorage may be unavailable; in-memory state still works for the session.
     }
-  }, [activeRoute, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyActuals, uomConfigs, filters]);
+  }, [activeRoute, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters]);
 
   const showToast = (msg: string) => { setToastMessage(msg); setTimeout(() => setToastMessage(null), 3000); };
   const resetFilters = () => setFilters(DEFAULT_FILTERS);
@@ -123,21 +126,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addNationalActivity = (na: NationalActivity) => { setNationalActivities(prev => [...prev, na]); showToast(`National Activity ${na.code} created.`); };
   const updateNationalActivity = (na: NationalActivity) => { setNationalActivities(prev => prev.map(x => x.id === na.id ? na : x)); showToast(`National Activity ${na.code} updated.`); };
 
-  // Cascades the delete to every dependent record, AND clears any UI state
-  // that referenced this National Activity by id. Without the last two
-  // lines, filters.nationalActivityId or selectedNationalActivityId could
-  // keep pointing at an id that no longer exists anywhere — which doesn't
-  // crash anything, but silently makes the Plan Entries table look "empty"
-  // (filter matches nothing) or makes the Detail page fall back to a
-  // different activity than the one the person thinks they're viewing.
+  // Cascades the delete to EVERY dependent record — Plan Entries, their
+  // Quarterly Plans, and their Quarterly Actuals — and clears any UI state
+  // that referenced this National Activity by id, so nothing is left
+  // pointing at an id that no longer exists anywhere.
   const deleteNationalActivity = (id: string) => {
     const childIds = planEntries.filter(pe => pe.national_activity_id === id).map(pe => pe.id);
     setPlanEntries(prev => prev.filter(pe => pe.national_activity_id !== id));
+    setQuarterlyPlans(prev => prev.filter(qp => !childIds.includes(qp.plan_entry_id)));
     setQuarterlyActuals(prev => prev.filter(a => !childIds.includes(a.plan_entry_id)));
     setNationalActivities(prev => prev.filter(x => x.id !== id));
     setSelectedNationalActivityId(prev => (prev === id ? null : prev));
     setFilters(prev => (prev.nationalActivityId === id ? { ...prev, nationalActivityId: 'ALL' } : prev));
-    showToast('National Activity and its linked plan/actual records deleted.');
+    showToast('National Activity and its linked plan, quarterly plan and actual records deleted.');
   };
 
   const addRegion = (r: Region) => { setRegions(prev => [...prev, r]); showToast(`Region ${r.name} added.`); };
@@ -149,14 +150,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Entries under a National Activity changes (added / edited / deleted),
   // this recomputes that National Activity's OFFICIAL annual_target and
   // annual_budget as the live sum of its children, and writes it straight
-  // back onto the National Activity record. This is what keeps the
-  // National Activity "always accurate" instead of just flagging a
-  // mismatch after the fact.
+  // back onto the National Activity record.
   //
   // Always computes from the `entries` array passed in — the POST-mutation
-  // snapshot — never from the `planEntries` closure variable. That's what
-  // guarantees this is correct regardless of React's render/commit timing:
-  // there's no window where the sum could be computed from a stale list.
+  // snapshot — never from the `planEntries` closure variable, so this is
+  // correct regardless of React's render/commit timing.
   // ---------------------------------------------------------------------
   const syncNationalActivityTotals = (nationalActivityId: string, entries: PlanEntry[]) => {
     const children = entries.filter(pe => pe.national_activity_id === nationalActivityId);
@@ -195,13 +193,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Plan entry updated. ${na?.code || 'Linked National Activity'} target & budget re-synced live.`);
   };
 
+  // Deleting a Plan Entry cascades to its Quarterly Plan AND its Quarterly
+  // Actuals — both are meaningless without the Plan Entry they measure.
   const deletePlanEntry = (id: string) => {
     const old = planEntries.find(x => x.id === id);
     const next = planEntries.filter(x => x.id !== id);
     setPlanEntries(next);
+    setQuarterlyPlans(prev => prev.filter(qp => qp.plan_entry_id !== id));
     setQuarterlyActuals(prev => prev.filter(a => a.plan_entry_id !== id));
     if (old) syncNationalActivityTotals(old.national_activity_id, next);
-    showToast('Plan entry and its quarterly actuals deleted. Linked National Activity totals re-synced.');
+    showToast('Plan entry, its quarterly plan and its quarterly actuals deleted. Linked National Activity totals re-synced.');
+  };
+
+  // Stores one quarter's planned target/budget for a Plan Entry. Deliberately
+  // does NOT write back to the Plan Entry's own annual_target/annual_budget —
+  // see the QuarterlyPlan type comment for why. The Quarterly Plan page reads
+  // this directly alongside the Plan Entry's annual figure to show whether
+  // they reconcile.
+  const upsertQuarterlyPlan = (qp: QuarterlyPlan) => {
+    setQuarterlyPlans(prev => {
+      const idx = prev.findIndex(x => x.plan_entry_id === qp.plan_entry_id && x.quarter_id === qp.quarter_id);
+      if (idx >= 0) { const copy = [...prev]; copy[idx] = qp; return copy; }
+      return [...prev, qp];
+    });
   };
 
   const upsertQuarterlyActual = (qa: QuarterlyActual) => {
@@ -232,6 +246,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       zones, addZone,
       projects, quarters,
       planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry,
+      quarterlyPlans, upsertQuarterlyPlan,
       quarterlyActuals, upsertQuarterlyActual,
       uomConfigs, updateUomFactor,
       filters, setFilters, resetFilters, getFilteredPlanEntries,

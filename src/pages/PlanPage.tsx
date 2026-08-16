@@ -39,10 +39,8 @@ export const PlanPage: React.FC = () => {
 
   // Consumes the one-shot "open the Add Plan wizard for this National
   // Activity" signal set by NationalActivityDetailPage's "+ Add Plan Entry"
-  // button. Fires on mount (since App.tsx swaps pages by unmount/remount,
-  // this always runs when the person arrives here via that button) and
-  // whenever the signal changes. Opens straight at Step 2 with the parent
-  // already locked in, then clears the signal so it never re-fires.
+  // button. Opens straight at Step 2 with the parent already locked in,
+  // then clears the signal so it never re-fires.
   useEffect(() => {
     if (!pendingAddPlanNationalActivityId) return;
     const na = nationalActivities.find(n => n.id === pendingAddPlanNationalActivityId);
@@ -150,6 +148,7 @@ export const PlanPage: React.FC = () => {
         <h2 className="text-xl font-black text-slate-800">Step 1 — Annual Plan Data Entry</h2>
         <p className="text-xs text-slate-500 mt-1">
           Define each National Activity's official target, then link it to the Regions or Projects executing against it.
+          Once linked, head to the Quarterly Plan page to split each entry's annual figures into Q1–Q4 before reporting actuals.
         </p>
       </div>
 
@@ -540,8 +539,7 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
 // Step 1 makes the parent link explicit: Strategic Priority -> National
 // Activity, with a live breadcrumb preview and current linked-entry count.
 // Step 2 captures execution details and previews exactly what the National
-// Activity's official Target/Budget will become once saved (they always
-// will, per AppContext.addPlanEntry / updatePlanEntry).
+// Activity's official Target/Budget will become once saved.
 // ---------------------------------------------------------------------------
 const PlanEntryWizardModal: React.FC<{
   initial: PeWizardFormState;
@@ -578,16 +576,11 @@ const PlanEntryWizardModal: React.FC<{
   const projectedTarget = siblingTarget + thisTarget;
   const projectedBudget = siblingBudget + thisBudget;
 
-  // Guard 1: Annual Target / Annual Budget must be zero or greater. The
-  // number inputs' min="0" is only a UI hint, not an enforced constraint —
-  // without this check a negative value would silently corrupt every
-  // downstream sum (National Activity totals, Report page aggregates).
+  // Guard 1: Annual Target / Annual Budget must be zero or greater.
   const numbersValid = thisTarget >= 0 && thisBudget >= 0;
 
   // Guard 2: prevent two Plan Entries linking the same Region/Project to the
-  // same National Activity. Without this, both entries' targets/budgets get
-  // summed into the parent, silently double-counting that Region/Project's
-  // contribution everywhere (National Activity card, Detail page, Report page).
+  // same National Activity (would double-count that contribution everywhere).
   const isDuplicateLink = !!selectedNa && !!form.scope_type && planEntries.some(pe =>
     pe.id !== form.id &&
     pe.national_activity_id === selectedNa.id &&
@@ -748,6 +741,7 @@ const PlanEntryWizardModal: React.FC<{
             <div>Saving will automatically update <b>{selectedNa.code}</b>'s official Target &amp; Budget to match all linked Plan Entries.</div>
             <div>Projected National Activity Target: <b>{projectedTarget.toLocaleString()} {selectedNa.uom}</b> (currently {selectedNa.annual_target.toLocaleString()})</div>
             <div>Projected National Activity Budget: <b>ETB {projectedBudget.toLocaleString()}</b> (currently ETB {selectedNa.annual_budget.toLocaleString()})</div>
+            <div>After saving, split this entry's annual target and budget across Q1–Q4 on the Quarterly Plan page — Quarterly Actual Entry measures against that breakdown.</div>
           </div>
 
           <div className="flex justify-between">
@@ -789,7 +783,7 @@ const ConfirmDeleteModal: React.FC<{ label: string; onCancel: () => void; onConf
   <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
     <div className="bg-white max-w-md w-full rounded-xl shadow-2xl p-5">
       <div className="flex items-center gap-2 text-red-700 font-black text-sm"><Trash2 className="w-5 h-5" /> Delete "{label}"?</div>
-      <p className="text-xs text-slate-600 mt-3">This also removes any linked quarterly actuals, and re-syncs the parent National Activity's totals, so nothing ever references deleted data.</p>
+      <p className="text-xs text-slate-600 mt-3">This also removes any linked Quarterly Plan and Quarterly Actual records, and re-syncs the parent National Activity's totals, so nothing ever references deleted data.</p>
       <div className="mt-5 flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 rounded-lg border text-xs font-bold">Cancel</button>
         <button onClick={onConfirm} className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold">Delete</button>

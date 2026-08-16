@@ -1,4 +1,5 @@
-import { PlanEntry, QuarterlyActual, UomFactorConfig } from '../types';
+// src/utils/calculations.ts
+import { PlanEntry, QuarterlyActual, QuarterlyPlan, UomFactorConfig } from '../types';
 
 /** Sum of annual targets across a set of Plan Entries. */
 export const sumTarget = (entries: PlanEntry[]): number =>
@@ -35,6 +36,45 @@ export const sumExpenditure = (
     .filter(a => ids.has(a.plan_entry_id))
     .filter(a => !quarterId || quarterId === 'ALL' || a.quarter_id === quarterId)
     .reduce((sum, a) => sum + a.expenditure, 0);
+};
+
+/**
+ * THE "WHAT WAS PLANNED" STEP — quarter-aware.
+ * - quarterId 'ALL' / undefined: falls back to the Plan Entries' own annual
+ *   annual_target (the Step 1 "Plan" figure — the fixed reference the
+ *   Quarterly Plan page reconciles against, never overwritten by it).
+ * - a specific quarter: the sum of that quarter's QuarterlyPlan.target for
+ *   these entries (0 for any entry with no Quarterly Plan set for that
+ *   quarter yet — callers surface that separately as a "missing plan" notice
+ *   rather than letting it silently read as "planned to reach zero").
+ * This is what lets Quarterly Actual Entry and the Report page compare an
+ * actual against the RIGHT plan: the quarter's plan when quarter-filtered,
+ * the annual plan otherwise — instead of always dividing by the full-year
+ * target regardless of which quarter is in view.
+ */
+export const sumPlannedTarget = (
+  entries: PlanEntry[],
+  quarterlyPlans: QuarterlyPlan[],
+  quarterId?: string
+): number => {
+  if (!quarterId || quarterId === 'ALL') return sumTarget(entries);
+  const ids = new Set(entries.map(e => e.id));
+  return quarterlyPlans
+    .filter(qp => ids.has(qp.plan_entry_id) && qp.quarter_id === quarterId)
+    .reduce((sum, qp) => sum + qp.target, 0);
+};
+
+/** Same as sumPlannedTarget, for budget. */
+export const sumPlannedBudget = (
+  entries: PlanEntry[],
+  quarterlyPlans: QuarterlyPlan[],
+  quarterId?: string
+): number => {
+  if (!quarterId || quarterId === 'ALL') return sumBudget(entries);
+  const ids = new Set(entries.map(e => e.id));
+  return quarterlyPlans
+    .filter(qp => ids.has(qp.plan_entry_id) && qp.quarter_id === quarterId)
+    .reduce((sum, qp) => sum + qp.budget, 0);
 };
 
 export const achievementPct = (actual: number, target: number): number =>

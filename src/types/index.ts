@@ -1,14 +1,18 @@
+// src/types/index.ts
 // ---------------------------------------------------------------------------
 // SIMPLIFIED DATA MODEL
 // The goal at this stage is to make one pipeline crystal clear:
 //
 //   Strategic Priority (grouping)
-//     -> National Activity (data entry)
-//       -> Plan Entry (data entry)
-//         -> Quarterly Actual (data entry)
-//           -> Beneficiaries = Actual x UoM Conversion Factor   (conversion)
-//             -> Summed by Strategic Priority / National Activity / Region / Project (aggregation)
-//               -> Report Page                                  (reporting)
+//     -> National Activity (data entry, auto-synced from Plan Entries)
+//       -> Plan Entry (data entry — the fixed annual target/budget for a Region/Project)
+//         -> Quarterly Plan (data entry — Q1-Q4 breakdown of that Plan Entry;
+//                             does NOT overwrite the Plan Entry, just reconciles against it)
+//           -> Quarterly Actual (data entry — reported per quarter, measured
+//                                 against that quarter's Quarterly Plan)
+//             -> Beneficiaries = Actual x UoM Conversion Factor   (conversion)
+//               -> Summed by Strategic Priority / National Activity / Region / Project (aggregation)
+//                 -> Report Page                                  (reporting)
 //
 // User roles and approval workflows have been removed for this stage so the
 // core pipeline is not obscured. Strategic Priorities were reintroduced as a
@@ -67,6 +71,23 @@ export interface PlanEntry {
 
 export type QuarterId = 'Q1' | 'Q2' | 'Q3' | 'Q4';
 export interface Quarter { id: QuarterId; label: string; }
+
+/**
+ * The quarterly breakdown of a Plan Entry's annual target/budget. Entered on
+ * the Quarterly Plan page (Step 2) — BEFORE Quarterly Actuals are reported
+ * for that quarter. Deliberately does NOT drive/overwrite the Plan Entry's
+ * own annual_target/annual_budget; the Quarterly Plan page instead shows a
+ * reconciliation badge if the quarters don't sum to the annual figure, so a
+ * mismatch is visible rather than silently resolved by shrinking the annual
+ * commitment.
+ */
+export interface QuarterlyPlan {
+  id: string;
+  plan_entry_id: string;
+  quarter_id: QuarterId;
+  target: number;
+  budget: number;
+}
 
 /** Actual performance reported against a Plan Entry, for one quarter. */
 export interface QuarterlyActual {

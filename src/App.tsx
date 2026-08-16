@@ -1,9 +1,11 @@
+// src/App.tsx
 import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/common/Header';
 import { Sidebar } from './components/common/Sidebar';
 import { Toast } from './components/common/Toast';
 import { PlanPage } from './pages/PlanPage';
+import { QuarterlyPlanPage } from './pages/QuarterlyPlanPage';
 import { QuarterlyEntryPage } from './pages/QuarterlyEntryPage';
 import { ReportPage } from './pages/ReportPage';
 import { NationalActivityDetailPage } from './pages/NationalActivityDetailPage';
@@ -14,6 +16,7 @@ const MainLayout: React.FC = () => {
   const renderContent = () => {
     switch (activeRoute) {
       case 'plan': return <PlanPage />;
+      case 'quarterly-plan': return <QuarterlyPlanPage />;
       case 'quarterly': return <QuarterlyEntryPage />;
       case 'report': return <ReportPage />;
       case 'national-detail': return <NationalActivityDetailPage />;
