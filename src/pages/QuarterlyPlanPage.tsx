@@ -38,7 +38,16 @@ export const QuarterlyPlanPage: React.FC = () => {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-600 font-bold uppercase border-b">
               <tr>
-                <th className="p-3">National Activity</th>
+                {/* FIX: the body renders activity_code and activity_name/description
+                    as two separate <td>s, but this header used to have a single
+                    "National Activity" <th> covering both. That off-by-one caused
+                    every column from Annual Target onward to render under the wrong
+                    header (Annual Target under "Annual Budget", Annual Budget under
+                    "Q1", etc). Splitting this into two headers — matching the same
+                    Activity Code / Activity Description convention used on the Plan,
+                    Pending Approval and Report pages — realigns every column. */}
+                <th className="p-3">Activity Code</th>
+                <th className="p-3">Activity Description</th>
                 <th className="p-3">Executed By</th>
                 <th className="p-3 text-right">Annual Target</th>
                 <th className="p-3 text-right">Annual Budget</th>
