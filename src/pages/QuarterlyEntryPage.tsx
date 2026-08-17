@@ -77,28 +77,30 @@ const EntryRow: React.FC<{
   const existing = quarterlyActuals.find(a => a.plan_entry_id === entry.id && a.quarter_id === quarter);
   const [actualVal, setActualVal] = useState<number>(existing?.actual ?? 0);
   const [expVal, setExpVal] = useState<number>(existing?.expenditure ?? 0);
+  const [commentVal, setCommentVal] = useState<string>(existing?.comment ?? '');
 
   // Keep local inputs in sync if the underlying quarter/entry selection changes.
   React.useEffect(() => {
     setActualVal(existing?.actual ?? 0);
     setExpVal(existing?.expenditure ?? 0);
+    setCommentVal(existing?.comment ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry.id, quarter]);
 
-  const sync = (nextActual: number, nextExp: number) => {
-    upsertQuarterlyActual({ id: existing?.id || `qa-${entry.id}-${quarter}`, plan_entry_id: entry.id, quarter_id: quarter, actual: nextActual, expenditure: nextExp });
+  const sync = (nextActual: number, nextExp: number, nextComment = commentVal) => {
+    upsertQuarterlyActual({ id: existing?.id || `qa-${entry.id}-${quarter}`, plan_entry_id: entry.id, quarter_id: quarter, actual: nextActual, expenditure: nextExp, comment: nextComment });
   };
 
   const handleActualChange = (raw: string) => {
     const v = clampNonNegative(raw);
     setActualVal(v);
-    sync(v, expVal);
+    sync(v, expVal, commentVal);
   };
 
   const handleExpChange = (raw: string) => {
     const v = clampNonNegative(raw);
     setExpVal(v);
-    sync(actualVal, v);
+    sync(actualVal, v, commentVal);
   };
 
   // THE COMPARISON THE USER ASKED FOR: this quarter's Actual measured
@@ -137,9 +139,10 @@ const EntryRow: React.FC<{
     <div className="bg-white p-5 rounded-xl border shadow-sm space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
         <div>
-          <span className="bg-ercs-red text-white text-[10px] font-extrabold px-2 py-0.5 rounded mr-2">{nationalActivityCode}</span>
+          <span className="bg-ercs-red text-white text-[10px] font-extrabold px-2 py-0.5 rounded mr-2">{entry.activity_code || nationalActivityCode}</span>
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${entry.scope_type === 'Regional' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{entry.scope_type}</span>
           <span className="ml-2 text-xs font-bold text-slate-800">{scopeLabel}</span>
+          <div className="text-[10px] text-slate-500 mt-1 max-w-2xl"><b>{entry.activity_name}</b> — {entry.activity_description}</div>
         </div>
         <div className="flex items-center gap-2">
           <div className="text-[10px] bg-slate-100 px-2 py-1 rounded font-semibold whitespace-nowrap">Annual Target: {entry.annual_target.toLocaleString()} {uom}</div>
@@ -170,6 +173,10 @@ const EntryRow: React.FC<{
         <div>
           <label className="block text-[10px] font-bold text-slate-500 mb-1">Expenditure this quarter (ETB)</label>
           <input type="number" min="0" value={expVal} onChange={e => handleExpChange(e.target.value)} className={`w-36 text-xs p-2 border rounded ${isOverBudget ? 'border-rose-300 bg-rose-50' : ''}`} />
+        </div>
+        <div className="min-w-64 flex-1">
+          <label className="block text-[10px] font-bold text-slate-500 mb-1">Comment</label>
+          <textarea rows={2} value={commentVal} onChange={e => { setCommentVal(e.target.value); sync(actualVal, expVal, e.target.value); }} placeholder="Add a note about the reported actual or expenditure" className="w-full text-xs p-2 border rounded bg-white resize-y" />
         </div>
 
         <div className="flex items-center gap-2 ml-auto flex-wrap">

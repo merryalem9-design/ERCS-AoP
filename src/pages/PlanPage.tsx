@@ -19,6 +19,8 @@ interface PeWizardFormState {
   project_id: string;
   annual_target: string;
   annual_budget: string;
+  activity_name: string;
+  activity_description: string;
 }
 
 // Sentinel the UoM dropdown uses to mean "let me define a brand new unit"
@@ -34,6 +36,28 @@ const LOCKED_UOMS = new Set(['Person', 'House Hold (HH)']);
 const clampFactor = (raw: string): number => {
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+
+const getProjectCodePart = (name: string): string =>
+  name.split('/')[0].trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+const buildActivityCode = (
+  na: NationalActivity | undefined,
+  scopeType: ScopeType,
+  regionId: string,
+  projectId: string,
+  regions: Region[],
+  projects: { id: string; name: string }[],
+): string => {
+  if (!na) return '';
+  const scopeLabel = scopeType === 'Regional'
+    ? regions.find(r => r.id === regionId)?.name
+    : projects.find(p => p.id === projectId)?.name;
+  if (!scopeLabel) return na.code;
+  const suffix = scopeType === 'Regional'
+    ? scopeLabel.trim().replace(/\s+/g, '_')
+    : `${getProjectCodePart(scopeLabel)}${na.responsibility === 'Both' ? '_HQ' : ''}`;
+  return `${na.code}_${suffix}`;
 };
 
 // Form shape used by the National Activity modal. Extends the persisted
@@ -54,7 +78,7 @@ export const PlanPage: React.FC = () => {
     regions, zones, projects, planEntries, deletePlanEntry,
     uomConfigs, updateUomFactor, filters, getFilteredPlanEntries,
     setSelectedNationalActivityId, setActiveRoute,
-    pendingAddPlanNationalActivityId, setPendingAddPlanNationalActivityId,
+    pendingAddPlanNationalActivityId, setPendingAddPlanNationalActivityId, currentRole,
   } = useApp();
 
   const [naForm, setNaForm] = useState<null | NationalActivityFormState>(null);
@@ -80,6 +104,8 @@ export const PlanPage: React.FC = () => {
           project_id: '',
           annual_target: '',
           annual_budget: '',
+          activity_name: '',
+          activity_description: '',
         },
         startStep: 2,
       });
@@ -170,6 +196,8 @@ export const PlanPage: React.FC = () => {
         project_id: '',
         annual_target: '',
         annual_budget: '',
+        activity_name: '',
+        activity_description: '',
       },
       startStep: 1,
     });
@@ -187,6 +215,8 @@ export const PlanPage: React.FC = () => {
         project_id: pe.project_id || '',
         annual_target: String(pe.annual_target),
         annual_budget: String(pe.annual_budget),
+        activity_name: pe.activity_name,
+        activity_description: pe.activity_description,
       },
       startStep: 2,
     });
@@ -210,12 +240,14 @@ export const PlanPage: React.FC = () => {
           <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
             <Layers className="w-4 h-4 text-ercs-red" /> National Activities ({visibleNationalActivities.length})
           </div>
-          <button
-            onClick={() => setNaForm({ strategic_priority_id: filters.strategicPriorityId !== 'ALL' ? filters.strategicPriorityId : undefined, code: 'Activity ' })}
-            className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add National Activity
-          </button>
+          {currentRole === 'National Activity AOP' && (
+            <button
+              onClick={() => setNaForm({ strategic_priority_id: filters.strategicPriorityId !== 'ALL' ? filters.strategicPriorityId : undefined, code: 'Activity ' })}
+              className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add National Activity
+            </button>
+          )}
         </div>
         <div className="divide-y">
           {visibleNationalActivities.map(na => {
@@ -259,8 +291,10 @@ export const PlanPage: React.FC = () => {
                     <button onClick={() => viewLinkMap(na.id)} className="px-2.5 py-1.5 rounded bg-red-50 text-ercs-red font-bold text-xs flex items-center gap-1">
                       View Link Map <ArrowUpRight className="w-3 h-3" />
                     </button>
-                    <button onClick={() => setNaForm(na)} className="px-2.5 py-1.5 rounded bg-blue-50 text-blue-700 font-bold text-xs">Edit</button>
-                    <button onClick={() => setDeleteTarget({ type: 'na', id: na.id, label: na.code })} className="px-2.5 py-1.5 rounded bg-red-50 text-red-700 font-bold text-xs flex items-center gap-1"><Trash2 className="w-3 h-3" /></button>
+                    {currentRole === 'National Activity AOP' && <>
+                      <button onClick={() => setNaForm(na)} className="px-2.5 py-1.5 rounded bg-blue-50 text-blue-700 font-bold text-xs">Edit</button>
+                      <button onClick={() => setDeleteTarget({ type: 'na', id: na.id, label: na.code })} className="px-2.5 py-1.5 rounded bg-red-50 text-red-700 font-bold text-xs flex items-center gap-1"><Trash2 className="w-3 h-3" /></button>
+                    </>}
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-bold">
@@ -296,35 +330,44 @@ export const PlanPage: React.FC = () => {
       <section className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <div className="p-4 border-b flex items-center justify-between bg-slate-50">
           <div className="text-xs font-bold text-slate-800 uppercase tracking-wider">Execution Plan Entries ({filteredEntries.length})</div>
-          <button onClick={openAddPlanWizard} className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-            <Plus className="w-3.5 h-3.5" /> Add Plan
-          </button>
+          {currentRole !== 'National Activity AOP' && (
+            <button onClick={openAddPlanWizard} className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+              <Plus className="w-3.5 h-3.5" /> Add Plan Entry
+            </button>
+          )}
         </div>
         <table className="w-full text-left text-xs">
-          <thead className="bg-slate-50 text-slate-600 font-bold uppercase border-b"><tr><th className="p-3">National Activity</th><th className="p-3">Executed By</th><th className="p-3 text-right">Annual Target</th><th className="p-3 text-right">Annual Budget</th><th className="p-3 text-center">Actions</th></tr></thead>
+          <thead className="bg-slate-50 text-slate-600 font-bold uppercase border-b"><tr><th className="p-3">Activity Code</th><th className="p-3">Activity Description</th><th className="p-3">Executed By</th><th className="p-3 text-right">Annual Target</th><th className="p-3 text-right">Annual Budget</th><th className="p-3 text-center">Status</th><th className="p-3 text-center">Actions</th></tr></thead>
           <tbody className="divide-y">
             {filteredEntries.map(pe => {
               const na = nationalActivities.find(n => n.id === pe.national_activity_id);
               const scopeName = pe.scope_type === 'Regional' ? regions.find(r => r.id === pe.region_id)?.name : projects.find(p => p.id === pe.project_id)?.name;
               return (
                 <tr key={pe.id} className="hover:bg-slate-50">
-                  <td className="p-3 font-bold text-ercs-red">{na?.code}</td>
+                  <td className="p-3 font-bold text-ercs-red">{pe.activity_code}</td>
+                  <td className="p-3 min-w-56">
+                    <div className="font-bold text-slate-800">{pe.activity_name}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{pe.activity_description}</div>
+                  </td>
                   <td className="p-3">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${pe.scope_type === 'Regional' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{pe.scope_type}</span>
                     <span className="ml-2 font-semibold">{scopeName || '—'}</span>
                   </td>
                   <td className="p-3 text-right font-bold">{pe.annual_target.toLocaleString()} {na?.uom}</td>
                   <td className="p-3 text-right">{pe.annual_budget.toLocaleString()}</td>
+                  <td className="p-3 text-center"><ApprovalBadge status={pe.approval_status} /></td>
                   <td className="p-3">
-                    <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => openEditPlanWizard(pe)} className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-bold">Edit</button>
-                      <button onClick={() => setDeleteTarget({ type: 'pe', id: pe.id, label: `${na?.code} / ${scopeName}` })} className="px-2.5 py-1 rounded bg-red-50 text-red-700 font-bold"><Trash2 className="w-3 h-3" /></button>
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                      {currentRole !== 'National Activity AOP' && <button onClick={() => openEditPlanWizard(pe)} className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-bold">Edit</button>}
+                      {currentRole === 'National Activity AOP' && <span className="text-[10px] text-slate-400 font-semibold">Approval controlled from Pending Approval</span>}
+                      {currentRole !== 'National Activity AOP' && (pe.approval_status === 'Draft' || pe.approval_status === 'Rejected') && <SubmitButton planEntryId={pe.id} />}
+                      {currentRole !== 'National Activity AOP' && <button onClick={() => setDeleteTarget({ type: 'pe', id: pe.id, label: `${pe.activity_code} / ${scopeName}` })} className="px-2.5 py-1 rounded bg-red-50 text-red-700 font-bold"><Trash2 className="w-3 h-3" /></button>}
                     </div>
                   </td>
                 </tr>
               );
             })}
-            {filteredEntries.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-500">No plan entries match this filter.</td></tr>}
+            {filteredEntries.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-slate-500">No plan entries match this filter.</td></tr>}
           </tbody>
         </table>
       </section>
@@ -655,7 +698,7 @@ const PlanEntryWizardModal: React.FC<{
   onClose: () => void;
   onSaved: () => void;
 }> = ({ initial, startStep, onClose, onSaved }) => {
-  const { strategicPriorities, nationalActivities, regions, projects, planEntries, addPlanEntry, updatePlanEntry } = useApp();
+  const { strategicPriorities, nationalActivities, regions, projects, planEntries, addPlanEntry, updatePlanEntry, currentRole } = useApp();
   const [step, setStep] = useState<1 | 2>(startStep);
   const [form, setForm] = useState<PeWizardFormState>(initial);
 
@@ -666,6 +709,8 @@ const PlanEntryWizardModal: React.FC<{
   const savingRef = useRef(false);
 
   const isEditing = !!form.id;
+  const allowedScope: ScopeType | null = currentRole === 'Regional Coordinator' ? 'Regional' : currentRole === 'Project Coordinator' ? 'Project' : null;
+  const effectiveScope = allowedScope || form.scope_type;
 
   const naOptions = form.strategicPriorityId
     ? nationalActivities.filter(na => na.strategic_priority_id === form.strategicPriorityId)
@@ -692,8 +737,8 @@ const PlanEntryWizardModal: React.FC<{
   const isDuplicateLink = !!selectedNa && !!form.scope_type && planEntries.some(pe =>
     pe.id !== form.id &&
     pe.national_activity_id === selectedNa.id &&
-    pe.scope_type === form.scope_type &&
-    (form.scope_type === 'Regional'
+    pe.scope_type === effectiveScope &&
+    (effectiveScope === 'Regional'
       ? (!!form.region_id && pe.region_id === form.region_id)
       : (!!form.project_id && pe.project_id === form.project_id))
   );
@@ -701,10 +746,20 @@ const PlanEntryWizardModal: React.FC<{
   const canContinue = !!form.national_activity_id;
   const canSave =
     !!form.national_activity_id &&
-    !!form.scope_type &&
-    (form.scope_type === 'Regional' ? !!form.region_id : !!form.project_id) &&
+    !!effectiveScope &&
+    (effectiveScope === 'Regional' ? !!form.region_id : !!form.project_id) &&
+    !!form.activity_name.trim() &&
+    !!form.activity_description.trim() &&
     numbersValid &&
     !isDuplicateLink;
+
+  const generatedActivityCode = buildActivityCode(selectedNa, effectiveScope, form.region_id, form.project_id, regions, projects);
+
+  React.useEffect(() => {
+    if (form.activity_name.trim()) return;
+    const label = effectiveScope === 'Regional' ? regions.find(r => r.id === form.region_id)?.name : projects.find(p => p.id === form.project_id)?.name;
+    if (label) setForm(f => ({ ...f, activity_name: label }));
+  }, [form.activity_name, form.region_id, form.project_id, effectiveScope, regions, projects]);
 
   const handleSave = () => {
     if (!canSave || savingRef.current) return;
@@ -712,11 +767,15 @@ const PlanEntryWizardModal: React.FC<{
     const pe: PlanEntry = {
       id: form.id || `pe-${Date.now()}`,
       national_activity_id: form.national_activity_id,
-      scope_type: form.scope_type,
-      region_id: form.scope_type === 'Regional' ? form.region_id : undefined,
-      project_id: form.scope_type === 'Project' ? form.project_id : undefined,
+      scope_type: effectiveScope,
+      region_id: effectiveScope === 'Regional' ? form.region_id : undefined,
+      project_id: effectiveScope === 'Project' ? form.project_id : undefined,
       annual_target: thisTarget,
       annual_budget: thisBudget,
+      activity_code: buildActivityCode(selectedNa, effectiveScope, form.region_id, form.project_id, regions, projects),
+      activity_name: form.activity_name.trim(),
+      activity_description: form.activity_description.trim(),
+      approval_status: 'Draft',
     };
     if (isEditing) updatePlanEntry(pe); else addPlanEntry(pe);
     onSaved();
@@ -801,8 +860,9 @@ const PlanEntryWizardModal: React.FC<{
                 <button
                   key={st}
                   type="button"
-                  onClick={() => setForm(f => ({ ...f, scope_type: st, region_id: '', project_id: '' }))}
-                  className={`flex-1 py-2 rounded text-xs font-bold border ${form.scope_type === st ? 'bg-ercs-red text-white border-ercs-red' : 'bg-slate-50 text-slate-600'}`}
+                  onClick={() => allowedScope ? undefined : setForm(f => ({ ...f, scope_type: st, region_id: '', project_id: '', activity_name: '' }))}
+                  disabled={!!allowedScope && allowedScope !== st}
+                  className={`flex-1 py-2 rounded text-xs font-bold border ${effectiveScope === st ? 'bg-ercs-red text-white border-ercs-red' : 'bg-slate-50 text-slate-600'} disabled:opacity-40`}
                 >
                   {st}
                 </button>
@@ -810,7 +870,7 @@ const PlanEntryWizardModal: React.FC<{
             </div>
           </div>
 
-          {form.scope_type === 'Regional' && (
+          {effectiveScope === 'Regional' && (
             <div>
               <span className="block text-[10px] font-bold text-slate-500 mb-1">Region</span>
               <select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id: e.target.value }))} className="w-full text-xs border rounded p-2 bg-slate-50">
@@ -819,7 +879,7 @@ const PlanEntryWizardModal: React.FC<{
               </select>
             </div>
           )}
-          {form.scope_type === 'Project' && (
+          {effectiveScope === 'Project' && (
             <div>
               <span className="block text-[10px] font-bold text-slate-500 mb-1">Project</span>
               <select value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))} className="w-full text-xs border rounded p-2 bg-slate-50">
@@ -830,13 +890,25 @@ const PlanEntryWizardModal: React.FC<{
           )}
 
           <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2 bg-slate-50 border rounded-lg p-3">
+              <div className="text-[10px] uppercase font-extrabold text-slate-400">Auto-generated Activity Code</div>
+              <div className="text-sm font-black text-ercs-red mt-1">{generatedActivityCode || 'Select the execution scope first'}</div>
+              <div className="text-[10px] text-slate-400 mt-1">Generated from the parent National Activity and the selected Region/Project.</div>
+            </div>
+            <LabeledInput label="Activity Name" value={form.activity_name} onChange={v => setForm(f => ({ ...f, activity_name: v }))} placeholder="e.g. HNS, EAP, Amhara" />
+            <div className="col-span-2">
+              <label className="block">
+                <span className="block text-[10px] font-bold text-slate-500 mb-1">Activity Description</span>
+                <textarea value={form.activity_description} onChange={e => setForm(f => ({ ...f, activity_description: e.target.value }))} rows={3} placeholder="Describe what this Region/Project entry will deliver" className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-100" />
+              </label>
+            </div>
             <LabeledInput label={`Annual Target (${selectedNa.uom})`} type="number" value={form.annual_target} onChange={v => setForm(f => ({ ...f, annual_target: v }))} />
             <LabeledInput label="Annual Budget (ETB)" type="number" value={form.annual_budget} onChange={v => setForm(f => ({ ...f, annual_budget: v }))} />
           </div>
 
           {isDuplicateLink && (
             <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-[11px] text-rose-700 font-semibold">
-              This {form.scope_type === 'Regional' ? 'Region' : 'Project'} is already linked to {selectedNa.code}. Pick a different {form.scope_type === 'Regional' ? 'Region' : 'Project'}, or close this wizard and edit the existing entry instead — two entries for the same {form.scope_type === 'Regional' ? 'Region' : 'Project'} would double-count its contribution.
+              This {effectiveScope === 'Regional' ? 'Region' : 'Project'} is already linked to {selectedNa.code}. Pick a different {effectiveScope === 'Regional' ? 'Region' : 'Project'}, or close this wizard and edit the existing entry instead — two entries for the same {effectiveScope === 'Regional' ? 'Region' : 'Project'} would double-count its contribution.
             </div>
           )}
           {!numbersValid && (
@@ -862,6 +934,21 @@ const PlanEntryWizardModal: React.FC<{
       )}
     </ModalShell>
   );
+};
+
+const ApprovalBadge: React.FC<{ status: PlanEntry['approval_status'] }> = ({ status }) => {
+  const styles = {
+    'Draft': 'bg-slate-100 text-slate-700 border-slate-300',
+    'Pending Approval': 'bg-amber-100 text-amber-800 border-amber-300',
+    'Approved': 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    'Rejected': 'bg-rose-100 text-rose-800 border-rose-300',
+  } as const;
+  return <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${styles[status]}`}>{status}</span>;
+};
+
+const SubmitButton: React.FC<{ planEntryId: string }> = ({ planEntryId }) => {
+  const { submitPlanEntry } = useApp();
+  return <button onClick={() => submitPlanEntry(planEntryId)} className="px-2.5 py-1 rounded bg-amber-50 text-amber-800 font-bold">Submit</button>;
 };
 
 const StepPill: React.FC<{ num: number; label: string; active: boolean; done: boolean }> = ({ num, label, active, done }) => (

@@ -4,10 +4,11 @@ import { Filter, RotateCcw } from 'lucide-react';
 
 interface Props {
   showQuarter?: boolean;
+  showApprovalStatus?: boolean;
 }
 
-export const FilterBar: React.FC<Props> = ({ showQuarter = true }) => {
-  const { filters, setFilters, resetFilters, strategicPriorities, nationalActivities, regions, projects, quarters } = useApp();
+export const FilterBar: React.FC<Props> = ({ showQuarter = true, showApprovalStatus = false }) => {
+  const { filters, setFilters, resetFilters, strategicPriorities, nationalActivities, regions, projects, quarters, reportApprovalStatus, setReportApprovalStatus } = useApp();
 
   // National Activity options narrow to the selected Strategic Priority so the
   // dropdown never offers a combination that can't return any rows.
@@ -79,6 +80,16 @@ export const FilterBar: React.FC<Props> = ({ showQuarter = true }) => {
             <select name="quarterId" value={filters.quarterId} onChange={handleChange} className="w-full text-xs font-medium border-slate-200 rounded-lg bg-slate-50 py-1.5">
               <option value="ALL">All Quarters (Annual)</option>
               {quarters.map(q => <option key={q.id} value={q.id}>{q.id}</option>)}
+            </select>
+          </div>
+        )}
+        {showApprovalStatus && (
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1">Report Status</label>
+            <select value={reportApprovalStatus} onChange={e => setReportApprovalStatus(e.target.value as 'ALL' | 'Approved' | 'Draft')} className="w-full text-xs font-medium border-slate-200 rounded-lg bg-slate-50 py-1.5">
+              <option value="Approved">Approved Report</option>
+              <option value="Draft">Draft / Pending Review</option>
+              <option value="ALL">All Statuses</option>
             </select>
           </div>
         )}

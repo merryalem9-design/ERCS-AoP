@@ -9,17 +9,26 @@ import { QuarterlyPlanPage } from './pages/QuarterlyPlanPage';
 import { QuarterlyEntryPage } from './pages/QuarterlyEntryPage';
 import { ReportPage } from './pages/ReportPage';
 import { NationalActivityDetailPage } from './pages/NationalActivityDetailPage';
+import { PendingApprovalPage } from './pages/PendingApprovalPage';
 
 const MainLayout: React.FC = () => {
-  const { activeRoute } = useApp();
+  const { activeRoute, currentRole, setActiveRoute } = useApp();
+
+  React.useEffect(() => {
+    const aopOnly = activeRoute === 'pending-approval';
+    const coordinatorOnly = activeRoute === 'quarterly-plan' || activeRoute === 'quarterly';
+    if (currentRole !== 'National Activity AOP' && aopOnly) setActiveRoute('plan');
+    if (currentRole === 'National Activity AOP' && coordinatorOnly) setActiveRoute('plan');
+  }, [currentRole, activeRoute, setActiveRoute]);
 
   const renderContent = () => {
     switch (activeRoute) {
       case 'plan': return <PlanPage />;
-      case 'quarterly-plan': return <QuarterlyPlanPage />;
-      case 'quarterly': return <QuarterlyEntryPage />;
+      case 'quarterly-plan': return currentRole === 'National Activity AOP' ? <PlanPage /> : <QuarterlyPlanPage />;
+      case 'quarterly': return currentRole === 'National Activity AOP' ? <PlanPage /> : <QuarterlyEntryPage />;
       case 'report': return <ReportPage />;
       case 'national-detail': return <NationalActivityDetailPage />;
+      case 'pending-approval': return currentRole === 'National Activity AOP' ? <PendingApprovalPage /> : <PlanPage />;
       default: return <PlanPage />;
     }
   };

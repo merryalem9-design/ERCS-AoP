@@ -1,7 +1,7 @@
 // src/context/AppContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
-  StrategicPriority, NationalActivity, Region, Zone, Project, PlanEntry, Quarter, QuarterlyPlan, QuarterlyActual, UomFactorConfig, FilterState,
+  StrategicPriority, NationalActivity, Region, Zone, Project, PlanEntry, Quarter, QuarterlyPlan, QuarterlyActual, UomFactorConfig, FilterState, UserRole,
 } from '../types';
 import {
   INITIAL_STRATEGIC_PRIORITIES, INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_ZONES, INITIAL_PROJECTS, INITIAL_PLAN_ENTRIES,
@@ -11,6 +11,7 @@ import { sumTarget, sumBudget } from '../utils/calculations';
 
 interface AppContextType {
   activeRoute: string; setActiveRoute: (r: string) => void;
+  currentRole: UserRole; setCurrentRole: (role: UserRole) => void;
   toastMessage: string | null; showToast: (msg: string) => void;
 
   // Which National Activity is being viewed on the drill-down detail page.
@@ -44,6 +45,9 @@ interface AppContextType {
   addPlanEntry: (pe: PlanEntry) => void;
   updatePlanEntry: (pe: PlanEntry) => void;
   deletePlanEntry: (id: string) => void;
+  submitPlanEntry: (id: string) => void;
+  approvePlanEntry: (id: string) => void;
+  rejectPlanEntry: (id: string, reason?: string) => void;
 
   // Step 2 of the pipeline: Q1–Q4 breakdown of a Plan Entry's annual figure.
   quarterlyPlans: QuarterlyPlan[];
@@ -56,12 +60,34 @@ interface AppContextType {
   updateUomFactor: (uom: string, factor: number) => void;
 
   filters: FilterState; setFilters: React.Dispatch<React.SetStateAction<FilterState>>; resetFilters: () => void;
+  reportApprovalStatus: 'ALL' | 'Approved' | 'Draft'; setReportApprovalStatus: (status: 'ALL' | 'Approved' | 'Draft') => void;
   getFilteredPlanEntries: () => PlanEntry[];
 }
 
 const DEFAULT_FILTERS: FilterState = { strategicPriorityId: 'ALL', nationalActivityId: 'ALL', regionId: 'ALL', projectId: 'ALL', quarterId: 'ALL' };
 
 const PERSISTENCE_KEY = 'ercs-aop-simplified-v2';
+
+const makePlanActivityCode = (pe: Partial<PlanEntry>, nas: NationalActivity[], regs: Region[], projs: Project[]): string => {
+  const na = nas.find(n => n.id === pe.national_activity_id);
+  const label = pe.scope_type === 'Regional' ? regs.find(r => r.id === pe.region_id)?.name : projs.find(p => p.id === pe.project_id)?.name;
+  if (!na || !label) return pe.activity_code || '';
+  const clean = (pe.scope_type === 'Regional' ? label : label.split('/')[0]).trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const suffix = pe.scope_type === 'Project' && na.responsibility === 'Both' ? `${clean}_HQ` : clean;
+  return `${na.code}_${suffix}`;
+};
+
+const migratePlanEntries = (raw: PlanEntry[]): PlanEntry[] => raw.map(pe => {
+  const na = INITIAL_NATIONAL_ACTIVITIES.find(n => n.id === pe.national_activity_id);
+  const label = pe.scope_type === 'Regional' ? INITIAL_REGIONS.find(r => r.id === pe.region_id)?.name : INITIAL_PROJECTS.find(p => p.id === pe.project_id)?.name;
+  return {
+    ...pe,
+    activity_code: pe.activity_code || makePlanActivityCode(pe, INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_PROJECTS),
+    activity_name: pe.activity_name || label || 'Execution Entry',
+    activity_description: pe.activity_description || `Execution plan entry under ${na?.code || 'National Activity'}.`,
+    approval_status: pe.approval_status || 'Approved',
+  };
+});
 
 const readPersisted = <T,>(key: string, fallback: T): T => {
   if (typeof window === 'undefined') return fallback;
@@ -79,6 +105,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeRoute, setActiveRoute] = useState<string>(() => readPersisted('activeRoute', 'plan'));
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => readPersisted('currentRole', 'National Activity AOP'));
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedNationalActivityId, setSelectedNationalActivityId] = useState<string | null>(() => readPersisted('selectedNationalActivityId', null));
   // Deliberately NOT persisted — this is a transient one-shot UI signal, not
@@ -92,27 +119,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [zones, setZones] = useState<Zone[]>(() => readPersisted('zones', INITIAL_ZONES));
   const [projects] = useState<Project[]>(INITIAL_PROJECTS);
   const [quarters] = useState<Quarter[]>(FISCAL_QUARTERS);
-  const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => readPersisted('planEntries', INITIAL_PLAN_ENTRIES));
+  const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => migratePlanEntries(readPersisted('planEntries', INITIAL_PLAN_ENTRIES)));
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>(() => readPersisted('quarterlyPlans', INITIAL_QUARTERLY_PLANS));
   const [quarterlyActuals, setQuarterlyActuals] = useState<QuarterlyActual[]>(() => readPersisted('quarterlyActuals', INITIAL_QUARTERLY_ACTUALS));
   const [uomConfigs, setUomConfigs] = useState<UomFactorConfig[]>(() => readPersisted('uomConfigs', INITIAL_UOM_CONFIGS));
   const [filters, setFilters] = useState<FilterState>(() => ({ ...DEFAULT_FILTERS, ...readPersisted('filters', DEFAULT_FILTERS) }));
+  const [reportApprovalStatus, setReportApprovalStatus] = useState<'ALL' | 'Approved' | 'Draft'>(() => readPersisted('reportApprovalStatus', 'Approved'));
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       window.localStorage.setItem(PERSISTENCE_KEY, JSON.stringify({
-        activeRoute, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters,
+        activeRoute, currentRole, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters, reportApprovalStatus,
       }));
     } catch {
       // localStorage may be unavailable; in-memory state still works for the session.
     }
-  }, [activeRoute, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters]);
+  }, [activeRoute, currentRole, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters, reportApprovalStatus]);
 
   const showToast = (msg: string) => { setToastMessage(msg); setTimeout(() => setToastMessage(null), 3000); };
   const resetFilters = () => setFilters(DEFAULT_FILTERS);
 
   const getFilteredPlanEntries = () => planEntries.filter(pe => {
+    if (currentRole === 'Regional Coordinator' && pe.scope_type !== 'Regional') return false;
+    if (currentRole === 'Project Coordinator' && pe.scope_type !== 'Project') return false;
     if (filters.strategicPriorityId !== 'ALL') {
       const na = nationalActivities.find(n => n.id === pe.national_activity_id);
       if (!na || na.strategic_priority_id !== filters.strategicPriorityId) return false;
@@ -123,14 +153,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   });
 
-  const addNationalActivity = (na: NationalActivity) => { setNationalActivities(prev => [...prev, na]); showToast(`National Activity ${na.code} created.`); };
-  const updateNationalActivity = (na: NationalActivity) => { setNationalActivities(prev => prev.map(x => x.id === na.id ? na : x)); showToast(`National Activity ${na.code} updated.`); };
+  const addNationalActivity = (na: NationalActivity) => {
+    if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can create National Activities.'); return; }
+    setNationalActivities(prev => [...prev, na]);
+    showToast(`National Activity ${na.code} created.`);
+  };
+  const updateNationalActivity = (na: NationalActivity) => {
+    if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can edit National Activities.'); return; }
+    setNationalActivities(prev => prev.map(x => x.id === na.id ? na : x));
+    showToast(`National Activity ${na.code} updated.`);
+  };
 
   // Cascades the delete to EVERY dependent record — Plan Entries, their
   // Quarterly Plans, and their Quarterly Actuals — and clears any UI state
   // that referenced this National Activity by id, so nothing is left
   // pointing at an id that no longer exists anywhere.
   const deleteNationalActivity = (id: string) => {
+    if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can delete National Activities.'); return; }
     const childIds = planEntries.filter(pe => pe.national_activity_id === id).map(pe => pe.id);
     setPlanEntries(prev => prev.filter(pe => pe.national_activity_id !== id));
     setQuarterlyPlans(prev => prev.filter(qp => !childIds.includes(qp.plan_entry_id)));
@@ -167,6 +206,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addPlanEntry = (pe: PlanEntry) => {
+    if (currentRole === 'National Activity AOP') { showToast('National Activity AOP creates National Activities; Regional and Project Coordinators create execution entries.'); return; }
+    if (currentRole === 'Regional Coordinator' && pe.scope_type !== 'Regional') { showToast('Regional Coordinator can only create Regional entries.'); return; }
+    if (currentRole === 'Project Coordinator' && pe.scope_type !== 'Project') { showToast('Project Coordinator can only create Project entries.'); return; }
     const next = [...planEntries, pe];
     setPlanEntries(next);
     const na = nationalActivities.find(n => n.id === pe.national_activity_id);
@@ -179,6 +221,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updatePlanEntry = (pe: PlanEntry) => {
+    if (currentRole === 'National Activity AOP') { showToast('National Activity AOP does not edit execution entries.'); return; }
+    if (currentRole === 'Regional Coordinator' && pe.scope_type !== 'Regional') { showToast('Regional Coordinator can only edit Regional entries.'); return; }
+    if (currentRole === 'Project Coordinator' && pe.scope_type !== 'Project') { showToast('Project Coordinator can only edit Project entries.'); return; }
     const old = planEntries.find(x => x.id === pe.id);
     const next = planEntries.map(x => (x.id === pe.id ? pe : x));
     setPlanEntries(next);
@@ -196,7 +241,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Deleting a Plan Entry cascades to its Quarterly Plan AND its Quarterly
   // Actuals — both are meaningless without the Plan Entry they measure.
   const deletePlanEntry = (id: string) => {
+    if (currentRole === 'National Activity AOP') { showToast('National Activity AOP does not delete execution entries.'); return; }
     const old = planEntries.find(x => x.id === id);
+    if (!old) return;
+    if (currentRole === 'Regional Coordinator' && old.scope_type !== 'Regional') { showToast('Regional Coordinator can only delete Regional entries.'); return; }
+    if (currentRole === 'Project Coordinator' && old.scope_type !== 'Project') { showToast('Project Coordinator can only delete Project entries.'); return; }
     const next = planEntries.filter(x => x.id !== id);
     setPlanEntries(next);
     setQuarterlyPlans(prev => prev.filter(qp => qp.plan_entry_id !== id));
@@ -205,12 +254,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Plan entry, its quarterly plan and its quarterly actuals deleted. Linked National Activity totals re-synced.');
   };
 
+  const submitPlanEntry = (id: string) => {
+    if (currentRole === 'National Activity AOP') { showToast('National Activity AOP approves or rejects proposals; Coordinators submit them.'); return; }
+    setPlanEntries(prev => prev.map(pe => pe.id === id
+      ? { ...pe, approval_status: 'Pending Approval', submitted_at: new Date().toISOString(), rejection_reason: undefined }
+      : pe
+    ));
+    showToast('Plan entry submitted to the National Activity AOP for approval.');
+  };
+
+  const approvePlanEntry = (id: string) => {
+    if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can approve entries.'); return; }
+    setPlanEntries(prev => prev.map(pe => pe.id === id
+      ? { ...pe, approval_status: 'Approved', reviewed_at: new Date().toISOString(), rejection_reason: undefined }
+      : pe
+    ));
+    showToast('Plan entry approved. It is now included in the live approved report.');
+  };
+
+  const rejectPlanEntry = (id: string, reason = 'Rejected by National Activity AOP.') => {
+    if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can reject entries.'); return; }
+    setPlanEntries(prev => prev.map(pe => pe.id === id
+      ? { ...pe, approval_status: 'Rejected', reviewed_at: new Date().toISOString(), rejection_reason: reason }
+      : pe
+    ));
+    showToast('Plan entry rejected. It remains in Draft reports for review.');
+  };
+
   // Stores one quarter's planned target/budget for a Plan Entry. Deliberately
   // does NOT write back to the Plan Entry's own annual_target/annual_budget —
   // see the QuarterlyPlan type comment for why. The Quarterly Plan page reads
   // this directly alongside the Plan Entry's annual figure to show whether
   // they reconcile.
   const upsertQuarterlyPlan = (qp: QuarterlyPlan) => {
+    if (currentRole === 'National Activity AOP') { showToast('Quarterly Plan entries are created by Regional and Project Coordinators.'); return; }
     setQuarterlyPlans(prev => {
       const idx = prev.findIndex(x => x.plan_entry_id === qp.plan_entry_id && x.quarter_id === qp.quarter_id);
       if (idx >= 0) { const copy = [...prev]; copy[idx] = qp; return copy; }
@@ -219,6 +296,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const upsertQuarterlyActual = (qa: QuarterlyActual) => {
+    if (currentRole === 'National Activity AOP') { showToast('Quarterly Actual entries are created by Regional and Project Coordinators.'); return; }
     setQuarterlyActuals(prev => {
       const idx = prev.findIndex(a => a.plan_entry_id === qa.plan_entry_id && a.quarter_id === qa.quarter_id);
       if (idx >= 0) { const copy = [...prev]; copy[idx] = qa; return copy; }
@@ -237,7 +315,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   return (
     <AppContext.Provider value={{
-      activeRoute, setActiveRoute, toastMessage, showToast,
+      activeRoute, setActiveRoute, currentRole, setCurrentRole, toastMessage, showToast,
       selectedNationalActivityId, setSelectedNationalActivityId,
       pendingAddPlanNationalActivityId, setPendingAddPlanNationalActivityId,
       strategicPriorities,
@@ -245,11 +323,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       regions, addRegion,
       zones, addZone,
       projects, quarters,
-      planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry,
+      planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry, submitPlanEntry, approvePlanEntry, rejectPlanEntry,
       quarterlyPlans, upsertQuarterlyPlan,
       quarterlyActuals, upsertQuarterlyActual,
       uomConfigs, updateUomFactor,
-      filters, setFilters, resetFilters, getFilteredPlanEntries,
+      filters, setFilters, resetFilters, reportApprovalStatus, setReportApprovalStatus, getFilteredPlanEntries,
     }}>
       {children}
     </AppContext.Provider>

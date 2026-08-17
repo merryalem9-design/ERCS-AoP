@@ -11,7 +11,7 @@ import { ArrowLeft, Layers, Building2, FolderGit2, Plus, Target, Wallet, Users, 
 
 export const NationalActivityDetailPage: React.FC = () => {
   const {
-    selectedNationalActivityId, setActiveRoute, setFilters, setPendingAddPlanNationalActivityId,
+    selectedNationalActivityId, setActiveRoute, setFilters, setPendingAddPlanNationalActivityId, currentRole,
     strategicPriorities, nationalActivities, regions, zones, projects,
     planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, quarters,
   } = useApp();
@@ -86,12 +86,16 @@ export const NationalActivityDetailPage: React.FC = () => {
           <ArrowLeft className="w-4 h-4" /> Back to Plan
         </button>
         <div className="flex gap-2">
-          <button onClick={goToQuarterlyPlan} className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold">
-            <CalendarClock className="w-3.5 h-3.5" /> Quarterly Plan
-          </button>
-          <button onClick={addLinkedEntry} className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-            <Plus className="w-3.5 h-3.5" /> Add Plan Entry
-          </button>
+          {currentRole !== 'National Activity AOP' && (
+            <button onClick={goToQuarterlyPlan} className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold">
+              <CalendarClock className="w-3.5 h-3.5" /> Quarterly Plan
+            </button>
+          )}
+          {currentRole !== 'National Activity AOP' && (
+            <button onClick={addLinkedEntry} className="flex items-center gap-1.5 bg-ercs-red text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+              <Plus className="w-3.5 h-3.5" /> Add Plan Entry
+            </button>
+          )}
         </div>
       </div>
 
@@ -199,7 +203,7 @@ export const NationalActivityDetailPage: React.FC = () => {
                     onClick={() => goToChild(pe)}
                     className="w-full bg-white p-3 rounded-lg border shadow-sm flex justify-between text-xs text-left hover:border-ercs-red transition-colors"
                   >
-                    <div><div className="font-bold">{reg?.name || '—'}</div><div className="text-[10px] text-slate-500">{na.code}</div></div>
+                    <div><div className="font-bold">{reg?.name || '—'}</div><div className="text-[10px] text-slate-500">{pe.activity_code || na.code}</div><div className="text-[10px] text-slate-600 font-semibold mt-0.5">{pe.activity_name}</div><div className="text-[9px] text-slate-400 mt-0.5 line-clamp-2">{pe.activity_description}</div></div>
                     <div className="text-right font-extrabold">{cAct.toLocaleString()} / {pe.annual_target.toLocaleString()}</div>
                   </button>
                 );
@@ -222,7 +226,7 @@ export const NationalActivityDetailPage: React.FC = () => {
                     onClick={() => goToChild(pe)}
                     className="w-full bg-white p-3 rounded-lg border shadow-sm flex justify-between text-xs text-left hover:border-blue-500 transition-colors"
                   >
-                    <div><div className="font-bold text-blue-800">{prj?.name || '—'}</div><div className="text-[10px] text-slate-500">{na.code}</div></div>
+                    <div><div className="font-bold text-blue-800">{prj?.name || '—'}</div><div className="text-[10px] text-slate-500">{pe.activity_code || na.code}</div><div className="text-[10px] text-slate-600 font-semibold mt-0.5">{pe.activity_name}</div><div className="text-[9px] text-slate-400 mt-0.5 line-clamp-2">{pe.activity_description}</div></div>
                     <div className="text-right font-extrabold">{cAct.toLocaleString()} / {pe.annual_target.toLocaleString()}</div>
                   </button>
                 );

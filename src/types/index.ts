@@ -58,6 +58,9 @@ export interface Project { id: string; name: string; }
 
 export type ScopeType = 'Regional' | 'Project';
 
+export type UserRole = 'National Activity AOP' | 'Regional Coordinator' | 'Project Coordinator';
+export type ApprovalStatus = 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected';
+
 /** The "how" — who is executing against a National Activity: a Region or a Project. */
 export interface PlanEntry {
   id: string;
@@ -67,6 +70,13 @@ export interface PlanEntry {
   project_id?: string;  // set when scope_type === 'Project'
   annual_target: number;
   annual_budget: number;
+  activity_code: string;
+  activity_name: string;
+  activity_description: string;
+  approval_status: ApprovalStatus;
+  submitted_at?: string;
+  reviewed_at?: string;
+  rejection_reason?: string;
 }
 
 export type QuarterId = 'Q1' | 'Q2' | 'Q3' | 'Q4';
@@ -96,6 +106,7 @@ export interface QuarterlyActual {
   quarter_id: QuarterId;
   actual: number;
   expenditure: number; // ETB spent
+  comment?: string;
 }
 
 /** Global conversion table: Actual (in UoM units) x factor = Beneficiaries reached. */
