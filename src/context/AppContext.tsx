@@ -8,6 +8,7 @@ import {
   FISCAL_QUARTERS, INITIAL_QUARTERLY_PLANS, INITIAL_QUARTERLY_ACTUALS, INITIAL_UOM_CONFIGS,
 } from '../data/seedData';
 import { sumTarget, sumBudget } from '../utils/calculations';
+import { buildActivityCode } from '../utils/activityCode';
 
 interface AppContextType {
   activeRoute: string; setActiveRoute: (r: string) => void;
@@ -68,21 +69,17 @@ const DEFAULT_FILTERS: FilterState = { strategicPriorityId: 'ALL', nationalActiv
 
 const PERSISTENCE_KEY = 'ercs-aop-simplified-v2';
 
-const makePlanActivityCode = (pe: Partial<PlanEntry>, nas: NationalActivity[], regs: Region[], projs: Project[]): string => {
-  const na = nas.find(n => n.id === pe.national_activity_id);
-  const label = pe.scope_type === 'Regional' ? regs.find(r => r.id === pe.region_id)?.name : projs.find(p => p.id === pe.project_id)?.name;
-  if (!na || !label) return pe.activity_code || '';
-  const clean = (pe.scope_type === 'Regional' ? label : label.split('/')[0]).trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-  const suffix = pe.scope_type === 'Project' && na.responsibility === 'Both' ? `${clean}_HQ` : clean;
-  return `${na.code}_${suffix}`;
-};
-
+// Fills in activity_code/activity_name/etc. on legacy persisted Plan Entries
+// that predate those fields. Uses the shared buildActivityCode helper (also
+// used live by PlanPage's Add Plan wizard) so a migrated code can never
+// drift from what the wizard itself would have generated for the same
+// National Activity + Region/Project combination.
 const migratePlanEntries = (raw: PlanEntry[]): PlanEntry[] => raw.map(pe => {
   const na = INITIAL_NATIONAL_ACTIVITIES.find(n => n.id === pe.national_activity_id);
   const label = pe.scope_type === 'Regional' ? INITIAL_REGIONS.find(r => r.id === pe.region_id)?.name : INITIAL_PROJECTS.find(p => p.id === pe.project_id)?.name;
   return {
     ...pe,
-    activity_code: pe.activity_code || makePlanActivityCode(pe, INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_PROJECTS),
+    activity_code: pe.activity_code || buildActivityCode(na, pe.scope_type, pe.region_id, pe.project_id, INITIAL_REGIONS, INITIAL_PROJECTS),
     activity_name: pe.activity_name || label || 'Execution Entry',
     activity_description: pe.activity_description || `Execution plan entry under ${na?.code || 'National Activity'}.`,
     approval_status: pe.approval_status || 'Approved',

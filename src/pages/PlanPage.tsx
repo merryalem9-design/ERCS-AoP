@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
 import { sumTarget, sumBudget } from '../utils/calculations';
+import { buildActivityCode } from '../utils/activityCode';
 import { NationalActivity, PlanEntry, ScopeType, Region, Zone, Responsibility } from '../types';
 import { AlertTriangle, ArrowUpRight, CheckCircle2, ChevronRight, Layers, Plus, Save, Trash2, X } from 'lucide-react';
 
@@ -36,28 +37,6 @@ const LOCKED_UOMS = new Set(['Person', 'House Hold (HH)']);
 const clampFactor = (raw: string): number => {
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-};
-
-const getProjectCodePart = (name: string): string =>
-  name.split('/')[0].trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-
-const buildActivityCode = (
-  na: NationalActivity | undefined,
-  scopeType: ScopeType,
-  regionId: string,
-  projectId: string,
-  regions: Region[],
-  projects: { id: string; name: string }[],
-): string => {
-  if (!na) return '';
-  const scopeLabel = scopeType === 'Regional'
-    ? regions.find(r => r.id === regionId)?.name
-    : projects.find(p => p.id === projectId)?.name;
-  if (!scopeLabel) return na.code;
-  const suffix = scopeType === 'Regional'
-    ? scopeLabel.trim().replace(/\s+/g, '_')
-    : `${getProjectCodePart(scopeLabel)}${na.responsibility === 'Both' ? '_HQ' : ''}`;
-  return `${na.code}_${suffix}`;
 };
 
 // Form shape used by the National Activity modal. Extends the persisted
@@ -129,10 +108,12 @@ export const PlanPage: React.FC = () => {
 
   const saveNa = () => {
     if (!naForm) return;
-    // National Activity annual Target/Budget are fixed parent ceilings.
-    // Linked Plan Entries consume these ceilings and must never increase them.
-    const linkedChildren = naForm.id ? planEntries.filter(pe => pe.national_activity_id === naForm.id) : [];
-    const hasChildren = linkedChildren.length > 0;
+    // National Activity annual Target/Budget are fixed parent ceilings, set
+    // once and then locked as soon as any Plan Entry links to this National
+    // Activity (see the read-only "Ceiling" fields in NationalActivityModal
+    // below — the inputs are hidden and disabled once hasChildren is true,
+    // so naForm.annual_target/annual_budget always still carry the correct,
+    // unmodified ceiling value here, whether the NA has children or not).
     const manualTarget = Number(naForm.annual_target);
     const manualBudget = Number(naForm.annual_budget);
 
@@ -418,6 +399,18 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
   const hasChildren = linkedChildren.length > 0;
   const computedTarget = sumTarget(linkedChildren);
   const computedBudget = sumBudget(linkedChildren);
+  // FIX: this used to be displayed under the "Annual Target/Budget Ceiling"
+  // labels below — but computedTarget/computedBudget are the CURRENT
+  // ALLOCATION (sum of linked children), not the actual fixed ceiling
+  // stored on the National Activity. Whenever children hadn't yet
+  // reconciled exactly to the ceiling (which the Plan page explicitly
+  // allows and flags with amber "Target/Budget sum ≠ official" badges),
+  // this modal was silently showing the wrong number under a label that
+  // implied it was the hard limit. ceilingTarget/ceilingBudget below are
+  // the REAL, unmodified na.annual_target/annual_budget — form.annual_target
+  // never changes while hasChildren is true, since the input is hidden.
+  const ceilingTarget = Number(form.annual_target || 0);
+  const ceilingBudget = Number(form.annual_budget || 0);
 
   // "Other" UoM support: selecting OTHER_UOM in the dropdown reveals a
   // Name + Value pair instead of picking straight from the existing
@@ -468,8 +461,8 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
     cfg => cfg.uom.trim().toLowerCase() === customUomNameTrimmed.toLowerCase()
   );
 
-  const linkedTargetExceedsCeiling = hasChildren && computedTarget > Number(form.annual_target || 0);
-  const linkedBudgetExceedsCeiling = hasChildren && computedBudget > Number(form.annual_budget || 0);
+  const linkedTargetExceedsCeiling = hasChildren && computedTarget > ceilingTarget;
+  const linkedBudgetExceedsCeiling = hasChildren && computedBudget > ceilingBudget;
 
   const saveDisabled = requiredMissing || manualNumbersInvalid || duplicateCode || otherUomInvalidValue || otherUomDuplicate || linkedTargetExceedsCeiling || linkedBudgetExceedsCeiling;
 
@@ -576,13 +569,19 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
           <>
             <div>
               <span className="block text-[10px] font-bold text-slate-500 mb-1">Annual Target Ceiling</span>
-              <div className="w-full text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded p-2">{computedTarget.toLocaleString()} {form.uom || ''}</div>
-              <div className="text-[10px] text-slate-400 mt-1">Fixed National Activity limit. Linked Plan Entries consume this ceiling.</div>
+              <div className="w-full text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded p-2">{ceilingTarget.toLocaleString()} {form.uom || ''}</div>
+              <div className="text-[10px] text-slate-400 mt-1">
+                Fixed National Activity limit — locked while Plan Entries are linked. Currently allocated across linked entries: <b>{computedTarget.toLocaleString()} {form.uom || ''}</b>
+                {computedTarget !== ceilingTarget ? ' (not yet fully reconciled — see the badges on the Plan page).' : '.'}
+              </div>
             </div>
             <div>
               <span className="block text-[10px] font-bold text-slate-500 mb-1">Annual Budget Ceiling</span>
-              <div className="w-full text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded p-2">ETB {computedBudget.toLocaleString()}</div>
-              <div className="text-[10px] text-slate-400 mt-1">Fixed National Activity limit. Linked Plan Entries consume this ceiling.</div>
+              <div className="w-full text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded p-2">ETB {ceilingBudget.toLocaleString()}</div>
+              <div className="text-[10px] text-slate-400 mt-1">
+                Fixed National Activity limit — locked while Plan Entries are linked. Currently allocated across linked entries: <b>ETB {computedBudget.toLocaleString()}</b>
+                {computedBudget !== ceilingBudget ? ' (not yet fully reconciled — see the badges on the Plan page).' : '.'}
+              </div>
             </div>
           </>
         ) : (
@@ -677,12 +676,12 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
       )}
       {linkedTargetExceedsCeiling && (
         <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
-          Linked Plan Entry targets total <b>{computedTarget.toLocaleString()} {form.uom || ''}</b>, which exceeds the fixed National Activity target ceiling of <b>{Number(form.annual_target || 0).toLocaleString()} {form.uom || ''}</b>.
+          Linked Plan Entry targets total <b>{computedTarget.toLocaleString()} {form.uom || ''}</b>, which exceeds the fixed National Activity target ceiling of <b>{ceilingTarget.toLocaleString()} {form.uom || ''}</b>.
         </div>
       )}
       {linkedBudgetExceedsCeiling && (
         <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
-          Linked Plan Entry budgets total <b>ETB {computedBudget.toLocaleString()}</b>, which exceeds the fixed National Activity budget ceiling of <b>ETB {Number(form.annual_budget || 0).toLocaleString()}</b>.
+          Linked Plan Entry budgets total <b>ETB {computedBudget.toLocaleString()}</b>, which exceeds the fixed National Activity budget ceiling of <b>ETB {ceilingBudget.toLocaleString()}</b>.
         </div>
       )}
       {otherUomInvalidValue && (
