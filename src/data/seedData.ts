@@ -174,4 +174,15 @@ export const INITIAL_QUARTERLY_ACTUALS: QuarterlyActual[] = [
 export const INITIAL_UOM_CONFIGS: UomFactorConfig[] = [
   { uom: 'Person', factor: 1 },
   { uom: 'House Hold (HH)', factor: 5 },
+  { uom: '# of MHCP', factor: 1 },
+  { uom: '# of assessment', factor: 1 },
+  { uom: '# of Policy, guidelines & SOP', factor: 1 },
+  { uom: '# of warehouse', factor: 1 },
+  { uom: '# of people trained', factor: 1 },
+  { uom: '# of established EOCs', factor: 1 },
+
+
+
+
+
 ];
