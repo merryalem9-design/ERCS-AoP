@@ -184,40 +184,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addZone = (z: Zone) => { setZones(prev => [...prev, z]); showToast(`Zone ${z.name} added.`); };
 
   // ---------------------------------------------------------------------
-  // THE "ADD PLAN" LINK: a Plan Entry always belongs to exactly one
-  // National Activity via national_activity_id. Whenever the set of Plan
-  // Entries under a National Activity changes (added / edited / deleted),
-  // this recomputes that National Activity's OFFICIAL annual_target and
-  // annual_budget as the live sum of its children, and writes it straight
-  // back onto the National Activity record.
-  //
-  // Always computes from the `entries` array passed in — the POST-mutation
-  // snapshot — never from the `planEntries` closure variable, so this is
-  // correct regardless of React's render/commit timing.
+  // National Activity ceilings are fixed parent limits. Plan Entries roll
+  // up into Reports/Details, but they MUST NOT increase the parent's
+  // annual_target / annual_budget ceiling.
   // ---------------------------------------------------------------------
-  const syncNationalActivityTotals = (nationalActivityId: string, entries: PlanEntry[]) => {
+  const getNationalActivityUsage = (nationalActivityId: string, entries: PlanEntry[]) => {
     const children = entries.filter(pe => pe.national_activity_id === nationalActivityId);
-    const target = sumTarget(children);
-    const budget = sumBudget(children);
-    setNationalActivities(prev => prev.map(na => (
-      na.id === nationalActivityId ? { ...na, annual_target: target, annual_budget: budget } : na
-    )));
-    return { target, budget };
+    return {
+      target: sumTarget(children),
+      budget: sumBudget(children),
+    };
+  };
+
+  const getNationalActivityValidation = (nationalActivityId: string, entries: PlanEntry[]) => {
+    const na = nationalActivities.find(n => n.id === nationalActivityId);
+    if (!na) {
+      return { ok: false, reason: 'The selected National Activity no longer exists.' };
+    }
+
+    const usage = getNationalActivityUsage(nationalActivityId, entries);
+    const targetExceeded = usage.target > na.annual_target;
+    const budgetExceeded = usage.budget > na.annual_budget;
+
+    if (targetExceeded || budgetExceeded) {
+      const reasons: string[] = [];
+      if (targetExceeded) {
+        reasons.push(
+          `annual target ${usage.target.toLocaleString()} exceeds the National Activity target limit of ${na.annual_target.toLocaleString()} ${na.uom}`
+        );
+      }
+      if (budgetExceeded) {
+        reasons.push(
+          `annual budget ETB ${usage.budget.toLocaleString()} exceeds the National Activity budget limit of ETB ${na.annual_budget.toLocaleString()}`
+        );
+      }
+      return { ok: false, reason: reasons.join(' and ') + '.' };
+    }
+
+    return { ok: true, reason: '' };
   };
 
   const addPlanEntry = (pe: PlanEntry) => {
     if (currentRole === 'National Activity AOP') { showToast('National Activity AOP creates National Activities; Regional and Project Coordinators create execution entries.'); return; }
     if (currentRole === 'Regional Coordinator' && pe.scope_type !== 'Regional') { showToast('Regional Coordinator can only create Regional entries.'); return; }
     if (currentRole === 'Project Coordinator' && pe.scope_type !== 'Project') { showToast('Project Coordinator can only create Project entries.'); return; }
+
     const next = [...planEntries, pe];
+    const validation = getNationalActivityValidation(pe.national_activity_id, next);
+    if (!validation.ok) {
+      showToast(`Plan entry not saved: ${validation.reason}`);
+      return;
+    }
+
     setPlanEntries(next);
     const na = nationalActivities.find(n => n.id === pe.national_activity_id);
-    if (na) {
-      const { target, budget } = syncNationalActivityTotals(na.id, next);
-      showToast(`Plan entry added and linked to ${na.code}. Target synced to ${target.toLocaleString()} ${na.uom}, budget to ETB ${budget.toLocaleString()}.`);
-    } else {
-      showToast('Plan entry added.');
-    }
+    showToast(na
+      ? `Plan entry added and linked to ${na.code}. National Activity Target/Budget ceilings remain unchanged.`
+      : 'Plan entry added.');
   };
 
   const updatePlanEntry = (pe: PlanEntry) => {
@@ -226,16 +249,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (currentRole === 'Project Coordinator' && pe.scope_type !== 'Project') { showToast('Project Coordinator can only edit Project entries.'); return; }
     const old = planEntries.find(x => x.id === pe.id);
     const next = planEntries.map(x => (x.id === pe.id ? pe : x));
+
+    const newParentValidation = getNationalActivityValidation(pe.national_activity_id, next);
+    if (!newParentValidation.ok) {
+      showToast(`Plan entry not updated: ${newParentValidation.reason}`);
+      return;
+    }
+
+    if (old && old.national_activity_id !== pe.national_activity_id) {
+      const oldParentValidation = getNationalActivityValidation(old.national_activity_id, next);
+      if (!oldParentValidation.ok) {
+        showToast(`Plan entry not updated: ${oldParentValidation.reason}`);
+        return;
+      }
+    }
+
     setPlanEntries(next);
-
-    // If the entry was re-linked to a different National Activity, re-sync
-    // both the old parent (which just lost a child) and the new one.
-    const affectedIds = new Set<string>([pe.national_activity_id]);
-    if (old && old.national_activity_id !== pe.national_activity_id) affectedIds.add(old.national_activity_id);
-    affectedIds.forEach(id => syncNationalActivityTotals(id, next));
-
     const na = nationalActivities.find(n => n.id === pe.national_activity_id);
-    showToast(`Plan entry updated. ${na?.code || 'Linked National Activity'} target & budget re-synced live.`);
+    showToast(`Plan entry updated. National Activity ${na?.code || ''} Target/Budget ceilings remain unchanged.`);
   };
 
   // Deleting a Plan Entry cascades to its Quarterly Plan AND its Quarterly
@@ -250,12 +281,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPlanEntries(next);
     setQuarterlyPlans(prev => prev.filter(qp => qp.plan_entry_id !== id));
     setQuarterlyActuals(prev => prev.filter(a => a.plan_entry_id !== id));
-    if (old) syncNationalActivityTotals(old.national_activity_id, next);
-    showToast('Plan entry, its quarterly plan and its quarterly actuals deleted. Linked National Activity totals re-synced.');
+    showToast('Plan entry, its quarterly plan and its quarterly actuals deleted. National Activity Target/Budget ceilings remain unchanged.');
   };
 
   const submitPlanEntry = (id: string) => {
     if (currentRole === 'National Activity AOP') { showToast('National Activity AOP approves or rejects proposals; Coordinators submit them.'); return; }
+    const entry = planEntries.find(pe => pe.id === id);
+    if (!entry) { showToast('Plan entry not found.'); return; }
+
+    const validation = getNationalActivityValidation(entry.national_activity_id, planEntries);
+    if (!validation.ok) {
+      showToast(`Cannot submit for approval: ${validation.reason}`);
+      return;
+    }
+
     setPlanEntries(prev => prev.map(pe => pe.id === id
       ? { ...pe, approval_status: 'Pending Approval', submitted_at: new Date().toISOString(), rejection_reason: undefined }
       : pe
@@ -265,6 +304,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const approvePlanEntry = (id: string) => {
     if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can approve entries.'); return; }
+    const entry = planEntries.find(pe => pe.id === id);
+    if (!entry) { showToast('Plan entry not found.'); return; }
+
+    const validation = getNationalActivityValidation(entry.national_activity_id, planEntries);
+    if (!validation.ok) {
+      showToast(`Cannot approve: ${validation.reason}`);
+      return;
+    }
+
     setPlanEntries(prev => prev.map(pe => pe.id === id
       ? { ...pe, approval_status: 'Approved', reviewed_at: new Date().toISOString(), rejection_reason: undefined }
       : pe

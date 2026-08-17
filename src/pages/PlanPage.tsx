@@ -129,10 +129,8 @@ export const PlanPage: React.FC = () => {
 
   const saveNa = () => {
     if (!naForm) return;
-    // Once a National Activity has linked Plan Entries, its official Target
-    // and Budget are owned by those entries (see AppContext), not by this
-    // form — so we always write back the computed sum here rather than
-    // whatever stale value might still be sitting in the form state.
+    // National Activity annual Target/Budget are fixed parent ceilings.
+    // Linked Plan Entries consume these ceilings and must never increase them.
     const linkedChildren = naForm.id ? planEntries.filter(pe => pe.national_activity_id === naForm.id) : [];
     const hasChildren = linkedChildren.length > 0;
     const manualTarget = Number(naForm.annual_target);
@@ -154,8 +152,8 @@ export const PlanPage: React.FC = () => {
       responsibility: (naForm.responsibility as Responsibility) || 'HQ',
       region_id: naForm.region_id || undefined,
       zone_id: naForm.zone_id || undefined,
-      annual_target: hasChildren ? sumTarget(linkedChildren) : (Number.isFinite(manualTarget) && manualTarget >= 0 ? manualTarget : 0),
-      annual_budget: hasChildren ? sumBudget(linkedChildren) : (Number.isFinite(manualBudget) && manualBudget >= 0 ? manualBudget : 0),
+      annual_target: Number.isFinite(manualTarget) && manualTarget >= 0 ? manualTarget : 0,
+      annual_budget: Number.isFinite(manualBudget) && manualBudget >= 0 ? manualBudget : 0,
     };
     if (!na.code || !na.description || !na.uom || !na.strategic_priority_id) return;
     // Defensive re-check (mirrors the NationalActivityModal's own guard):
@@ -284,7 +282,7 @@ export const PlanPage: React.FC = () => {
                     )}
                     <div className="text-xs text-slate-500 mt-1">
                       Official Target: <b>{na.annual_target.toLocaleString()} {na.uom}</b> · Official Budget: <b>ETB {na.annual_budget.toLocaleString()}</b>
-                      {children.length > 0 && <span className="text-slate-400"> (auto-synced from {children.length} linked entries)</span>}
+                      {children.length > 0 && <span className="text-slate-400"> (fixed National Activity ceiling)</span>}
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
@@ -413,7 +411,7 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
   const zonesInScope = form.region_id ? zones.filter(z => z.region_id === form.region_id) : [];
 
   // Once this National Activity has linked Plan Entries, Target/Budget are
-  // derived live from those entries (see AppContext.syncNationalActivityTotals)
+  // used for live reconciliation against the fixed National Activity ceiling
   // and shown read-only here — editing them directly would just be silently
   // overwritten the next time a Plan Entry changes, which is confusing.
   const linkedChildren = form.id ? planEntries.filter(pe => pe.national_activity_id === form.id) : [];
@@ -470,7 +468,10 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
     cfg => cfg.uom.trim().toLowerCase() === customUomNameTrimmed.toLowerCase()
   );
 
-  const saveDisabled = requiredMissing || manualNumbersInvalid || duplicateCode || otherUomInvalidValue || otherUomDuplicate;
+  const linkedTargetExceedsCeiling = hasChildren && computedTarget > Number(form.annual_target || 0);
+  const linkedBudgetExceedsCeiling = hasChildren && computedBudget > Number(form.annual_budget || 0);
+
+  const saveDisabled = requiredMissing || manualNumbersInvalid || duplicateCode || otherUomInvalidValue || otherUomDuplicate || linkedTargetExceedsCeiling || linkedBudgetExceedsCeiling;
 
   const handleAddRegion = () => {
     const name = newRegionName.trim();
@@ -574,14 +575,14 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
         {hasChildren ? (
           <>
             <div>
-              <span className="block text-[10px] font-bold text-slate-500 mb-1">Annual Target (auto-synced)</span>
+              <span className="block text-[10px] font-bold text-slate-500 mb-1">Annual Target Ceiling</span>
               <div className="w-full text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded p-2">{computedTarget.toLocaleString()} {form.uom || ''}</div>
-              <div className="text-[10px] text-slate-400 mt-1">Derived live from {linkedChildren.length} linked Plan Entries.</div>
+              <div className="text-[10px] text-slate-400 mt-1">Fixed National Activity limit. Linked Plan Entries consume this ceiling.</div>
             </div>
             <div>
-              <span className="block text-[10px] font-bold text-slate-500 mb-1">Annual Budget (auto-synced)</span>
+              <span className="block text-[10px] font-bold text-slate-500 mb-1">Annual Budget Ceiling</span>
               <div className="w-full text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded p-2">ETB {computedBudget.toLocaleString()}</div>
-              <div className="text-[10px] text-slate-400 mt-1">Derived live from {linkedChildren.length} linked Plan Entries.</div>
+              <div className="text-[10px] text-slate-400 mt-1">Fixed National Activity limit. Linked Plan Entries consume this ceiling.</div>
             </div>
           </>
         ) : (
@@ -674,6 +675,16 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
           Annual Target and Annual Budget must be zero or greater.
         </div>
       )}
+      {linkedTargetExceedsCeiling && (
+        <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
+          Linked Plan Entry targets total <b>{computedTarget.toLocaleString()} {form.uom || ''}</b>, which exceeds the fixed National Activity target ceiling of <b>{Number(form.annual_target || 0).toLocaleString()} {form.uom || ''}</b>.
+        </div>
+      )}
+      {linkedBudgetExceedsCeiling && (
+        <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
+          Linked Plan Entry budgets total <b>ETB {computedBudget.toLocaleString()}</b>, which exceeds the fixed National Activity budget ceiling of <b>ETB {Number(form.annual_budget || 0).toLocaleString()}</b>.
+        </div>
+      )}
       {otherUomInvalidValue && (
         <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
           Beneficiaries per Unit must be zero or greater.
@@ -729,8 +740,18 @@ const PlanEntryWizardModal: React.FC<{
   const projectedTarget = siblingTarget + thisTarget;
   const projectedBudget = siblingBudget + thisBudget;
 
+  // The National Activity's annual Target/Budget are hard ceilings.
+  // Existing sibling entries consume part of that ceiling, so this entry can
+  // only use the remaining amount.
+  const targetLimit = selectedNa?.annual_target ?? 0;
+  const budgetLimit = selectedNa?.annual_budget ?? 0;
+  const remainingTarget = Math.max(0, targetLimit - siblingTarget);
+  const remainingBudget = Math.max(0, budgetLimit - siblingBudget);
+  const targetExceeded = projectedTarget > targetLimit;
+  const budgetExceeded = projectedBudget > budgetLimit;
+
   // Guard 1: Annual Target / Annual Budget must be zero or greater.
-  const numbersValid = thisTarget >= 0 && thisBudget >= 0;
+  const numbersValid = thisTarget >= 0 && thisBudget >= 0 && !targetExceeded && !budgetExceeded;
 
   // Guard 2: prevent two Plan Entries linking the same Region/Project to the
   // same National Activity (would double-count that contribution everywhere).
@@ -902,8 +923,34 @@ const PlanEntryWizardModal: React.FC<{
                 <textarea value={form.activity_description} onChange={e => setForm(f => ({ ...f, activity_description: e.target.value }))} rows={3} placeholder="Describe what this Region/Project entry will deliver" className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-100" />
               </label>
             </div>
-            <LabeledInput label={`Annual Target (${selectedNa.uom})`} type="number" value={form.annual_target} onChange={v => setForm(f => ({ ...f, annual_target: v }))} />
-            <LabeledInput label="Annual Budget (ETB)" type="number" value={form.annual_budget} onChange={v => setForm(f => ({ ...f, annual_budget: v }))} />
+            <LabeledInput
+              label={`Annual Target (${selectedNa.uom})`}
+              type="number"
+              value={form.annual_target}
+              onChange={v => {
+                const raw = v;
+                if (raw === '') {
+                  setForm(f => ({ ...f, annual_target: '' }));
+                  return;
+                }
+                const value = Number(raw);
+                setForm(f => ({ ...f, annual_target: String(Math.min(Number.isFinite(value) ? Math.max(0, value) : 0, remainingTarget)) }));
+              }}
+            />
+            <LabeledInput
+              label="Annual Budget (ETB)"
+              type="number"
+              value={form.annual_budget}
+              onChange={v => {
+                const raw = v;
+                if (raw === '') {
+                  setForm(f => ({ ...f, annual_budget: '' }));
+                  return;
+                }
+                const value = Number(raw);
+                setForm(f => ({ ...f, annual_budget: String(Math.min(Number.isFinite(value) ? Math.max(0, value) : 0, remainingBudget)) }));
+              }}
+            />
           </div>
 
           {isDuplicateLink && (
@@ -911,16 +958,24 @@ const PlanEntryWizardModal: React.FC<{
               This {effectiveScope === 'Regional' ? 'Region' : 'Project'} is already linked to {selectedNa.code}. Pick a different {effectiveScope === 'Regional' ? 'Region' : 'Project'}, or close this wizard and edit the existing entry instead — two entries for the same {effectiveScope === 'Regional' ? 'Region' : 'Project'} would double-count its contribution.
             </div>
           )}
-          {!numbersValid && (
+          {!numbersValid && !targetExceeded && !budgetExceeded && (
             <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-[11px] text-rose-700 font-semibold">
               Annual Target and Annual Budget must be zero or greater.
             </div>
           )}
 
+          {(targetExceeded || budgetExceeded) && (
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-[11px] text-rose-700 font-semibold space-y-1">
+              {targetExceeded && <div>Annual Target cannot exceed the National Activity limit of <b>{targetLimit.toLocaleString()} {selectedNa.uom}</b>. Remaining allowance for this entry: <b>{remainingTarget.toLocaleString()} {selectedNa.uom}</b>.</div>}
+              {budgetExceeded && <div>Annual Budget cannot exceed the National Activity limit of <b>ETB {budgetLimit.toLocaleString()}</b>. Remaining allowance for this entry: <b>ETB {remainingBudget.toLocaleString()}</b>.</div>}
+              <div>Save and Submit for Approval are blocked until the total stays within the parent National Activity ceiling.</div>
+            </div>
+          )}
+
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-[11px] text-blue-800 font-semibold space-y-1">
-            <div>Saving will automatically update <b>{selectedNa.code}</b>'s official Target &amp; Budget to match all linked Plan Entries.</div>
-            <div>Projected National Activity Target: <b>{projectedTarget.toLocaleString()} {selectedNa.uom}</b> (currently {selectedNa.annual_target.toLocaleString()})</div>
-            <div>Projected National Activity Budget: <b>ETB {projectedBudget.toLocaleString()}</b> (currently ETB {selectedNa.annual_budget.toLocaleString()})</div>
+            <div><b>{selectedNa.code}</b> has a fixed annual Target/Budget ceiling. Linked Plan Entries consume this ceiling; they do not increase it.</div>
+            <div>Projected National Activity Target: <b>{projectedTarget.toLocaleString()} {selectedNa.uom}</b> / limit <b>{selectedNa.annual_target.toLocaleString()} {selectedNa.uom}</b></div>
+            <div>Projected National Activity Budget: <b>ETB {projectedBudget.toLocaleString()}</b> / limit <b>ETB {selectedNa.annual_budget.toLocaleString()}</b></div>
             <div>After saving, split this entry's annual target and budget across Q1–Q4 on the Quarterly Plan page — Quarterly Actual Entry measures against that breakdown.</div>
           </div>
 
