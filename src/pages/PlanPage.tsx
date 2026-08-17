@@ -21,17 +21,43 @@ interface PeWizardFormState {
   annual_budget: string;
 }
 
+// Sentinel the UoM dropdown uses to mean "let me define a brand new unit"
+// instead of picking one that's already in the Conversion Factors list.
+const OTHER_UOM = '__OTHER__';
+
+// These two ship with the app and back the core beneficiary math — their
+// conversion factor is intentionally never editable from the UI. Any other
+// UoM, including ones created via "Other" below, can be tuned freely from
+// the Conversion Factors list.
+const LOCKED_UOMS = new Set(['Person', 'House Hold (HH)']);
+
+const clampFactor = (raw: string): number => {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+
+// Form shape used by the National Activity modal. Extends the persisted
+// NationalActivity fields with two transient ones that only apply while
+// OTHER_UOM is selected in the UoM dropdown — the new unit's name and its
+// starting conversion factor (defaults to "1", since it's often just the
+// label that differs, e.g. "# of Agreements" vs "# of Boats", not the
+// beneficiary math).
+type NationalActivityFormState = Partial<NationalActivity> & {
+  customUomName?: string;
+  customUomValue?: string;
+};
+
 export const PlanPage: React.FC = () => {
   const {
     strategicPriorities,
     nationalActivities, addNationalActivity, updateNationalActivity, deleteNationalActivity,
     regions, zones, projects, planEntries, deletePlanEntry,
-    uomConfigs, filters, getFilteredPlanEntries,
+    uomConfigs, updateUomFactor, filters, getFilteredPlanEntries,
     setSelectedNationalActivityId, setActiveRoute,
     pendingAddPlanNationalActivityId, setPendingAddPlanNationalActivityId,
   } = useApp();
 
-  const [naForm, setNaForm] = useState<null | Partial<NationalActivity>>(null);
+  const [naForm, setNaForm] = useState<null | NationalActivityFormState>(null);
   const [peWizard, setPeWizard] = useState<null | { initial: PeWizardFormState; startStep: 1 | 2 }>(null);
   const [deleteTarget, setDeleteTarget] = useState<null | { type: 'na' | 'pe'; id: string; label: string }>(null);
 
@@ -85,12 +111,20 @@ export const PlanPage: React.FC = () => {
     const hasChildren = linkedChildren.length > 0;
     const manualTarget = Number(naForm.annual_target);
     const manualBudget = Number(naForm.annual_budget);
+
+    // "Other" UoM: the dropdown carries the OTHER_UOM sentinel while the
+    // real new unit's name/value live in customUomName/customUomValue.
+    // Resolve the actual uom string that gets saved on the National
+    // Activity here.
+    const isOtherUom = naForm.uom === OTHER_UOM;
+    const resolvedUom = isOtherUom ? (naForm.customUomName || '').trim() : (naForm.uom || '').trim();
+
     const na: NationalActivity = {
       id: naForm.id || `na-${Date.now()}`,
       strategic_priority_id: naForm.strategic_priority_id || '',
       code: (naForm.code || '').trim(),
       description: (naForm.description || '').trim(),
-      uom: (naForm.uom || '').trim(),
+      uom: resolvedUom,
       responsibility: (naForm.responsibility as Responsibility) || 'HQ',
       region_id: naForm.region_id || undefined,
       zone_id: naForm.zone_id || undefined,
@@ -104,6 +138,22 @@ export const PlanPage: React.FC = () => {
     // those are all labeled by code, not id.
     const isDuplicateCode = nationalActivities.some(other => other.id !== na.id && other.code.trim().toLowerCase() === na.code.toLowerCase());
     if (isDuplicateCode) return;
+
+    // Brand-new "Other" UoM: sync it into the shared Conversion Factors
+    // list (defaulting to the value entered, normally 1) so the Report
+    // page's beneficiary conversion picks it up immediately, and so it
+    // shows up as an editable card below. Only added if it doesn't already
+    // exist — Person and House Hold (HH), and any UoM created this way
+    // before, are never touched here.
+    if (isOtherUom && resolvedUom) {
+      const alreadyExists = uomConfigs.some(cfg => cfg.uom.trim().toLowerCase() === resolvedUom.toLowerCase());
+      if (!alreadyExists) {
+        const parsedValue = Number(naForm.customUomValue);
+        const factor = Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : 1;
+        updateUomFactor(resolvedUom, factor);
+      }
+    }
+
     if (naForm.id) updateNationalActivity(na); else addNationalActivity(na);
     setNaForm(null);
   };
@@ -234,16 +284,10 @@ export const PlanPage: React.FC = () => {
       {/* Conversion factors */}
       <section className="bg-white p-5 rounded-xl border shadow-sm space-y-3">
         <div className="text-xs font-bold text-slate-800 uppercase tracking-wider border-b pb-3">Conversion Factors (UoM → Beneficiaries)</div>
-        <p className="text-[11px] text-slate-500 -mt-1">This is the multiplier the Report page uses to turn a reported Actual into Beneficiaries Reached.</p>
+        <p className="text-[11px] text-slate-500 -mt-1">This is the multiplier the Report page uses to turn a reported Actual into Beneficiaries Reached. Person and House Hold (HH) are fixed; any UoM added via "Other" on a National Activity can be fine-tuned here.</p>
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {uomConfigs.map(cfg => (
-            <div key={cfg.uom} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
-              <div><div className="text-xs font-bold text-slate-800">{cfg.uom}</div><div className="text-[10px] text-slate-500">Beneficiaries per unit</div></div>
-              <div className="flex items-center gap-1">
-                <span className="text-xs font-bold text-slate-400">×</span>
-                <span className="w-14 text-center text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded p-1.5">{cfg.factor}</span>
-              </div>
-            </div>
+            <UomFactorCard key={cfg.uom} uom={cfg.uom} factor={cfg.factor} />
           ))}
         </div>
       </section>
@@ -308,7 +352,7 @@ export const PlanPage: React.FC = () => {
   );
 };
 
-const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
+const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm: any; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
   const { uomConfigs, strategicPriorities, regions, zones, addRegion, addZone, planEntries, nationalActivities } = useApp();
 
   const [addingRegion, setAddingRegion] = useState(false);
@@ -334,6 +378,19 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
   const computedTarget = sumTarget(linkedChildren);
   const computedBudget = sumBudget(linkedChildren);
 
+  // "Other" UoM support: selecting OTHER_UOM in the dropdown reveals a
+  // Name + Value pair instead of picking straight from the existing
+  // Conversion Factors list. These stay local to this modal until Save
+  // resolves them into a real uom string (see PlanPage's saveNa) — Person /
+  // House Hold (HH), and any UoM created this way before, are never
+  // touched by this path.
+  const isOtherUom = form.uom === OTHER_UOM;
+  const customUomNameTrimmed = (form.customUomName || '').trim();
+  const customUomValueRaw = form.customUomValue;
+  const customUomValueNum = Number(customUomValueRaw);
+  const otherUomMissingName = isOtherUom && !customUomNameTrimmed;
+  const otherUomInvalidValue = isOtherUom && customUomValueRaw !== undefined && customUomValueRaw !== '' && (Number.isNaN(customUomValueNum) || customUomValueNum < 0);
+
   // Required-field + non-negative-number guards. Manual Target/Budget
   // accepted negative numbers (min="0" on <input> is only a UI hint, not an
   // enforced constraint), which would corrupt every downstream aggregate.
@@ -341,7 +398,8 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
     !(form.code || '').trim() ||
     !(form.description || '').trim() ||
     !(form.uom || '').trim() ||
-    !form.strategic_priority_id;
+    !form.strategic_priority_id ||
+    otherUomMissingName;
 
   const manualTargetRaw = form.annual_target;
   const manualBudgetRaw = form.annual_budget;
@@ -362,7 +420,14 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
     other => other.id !== form.id && other.code.trim().toLowerCase() === codeTrimmed.toLowerCase()
   );
 
-  const saveDisabled = requiredMissing || manualNumbersInvalid || duplicateCode;
+  // A new "Other" UoM whose name matches one already in the Conversion
+  // Factors list (case-insensitive) — including Person / House Hold (HH) —
+  // should be picked from the dropdown instead of re-created here.
+  const otherUomDuplicate = isOtherUom && customUomNameTrimmed.length > 0 && uomConfigs.some(
+    cfg => cfg.uom.trim().toLowerCase() === customUomNameTrimmed.toLowerCase()
+  );
+
+  const saveDisabled = requiredMissing || manualNumbersInvalid || duplicateCode || otherUomInvalidValue || otherUomDuplicate;
 
   const handleAddRegion = () => {
     const name = newRegionName.trim();
@@ -409,13 +474,46 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
           <span className="block text-[10px] font-bold text-slate-500 mb-1">UoM</span>
           <select
             value={form.uom || ''}
-            onChange={e => setForm((f: any) => ({ ...f, uom: e.target.value }))}
+            onChange={e => {
+              const value = e.target.value;
+              if (value === OTHER_UOM) {
+                // Default the new unit's conversion factor to 1 — often
+                // it's just the name/description that differs (e.g.
+                // "# of Agreements" vs "# of Boats"), not the beneficiary
+                // math.
+                setForm((f: any) => ({ ...f, uom: value, customUomValue: f.customUomValue ?? '1' }));
+              } else {
+                setForm((f: any) => ({ ...f, uom: value }));
+              }
+            }}
             className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-100"
           >
             <option value="">Select UoM…</option>
             {uomConfigs.map(cfg => <option key={cfg.uom} value={cfg.uom}>{cfg.uom}</option>)}
+            <option value={OTHER_UOM}>Other (add new UoM)…</option>
           </select>
         </div>
+
+        {isOtherUom && (
+          <div className="col-span-2 grid grid-cols-2 gap-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg p-3">
+            <LabeledInput
+              label="New UoM Name"
+              value={form.customUomName || ''}
+              onChange={v => setForm((f: any) => ({ ...f, customUomName: v }))}
+              placeholder="e.g. # of Agreements, # of Boats"
+            />
+            <LabeledInput
+              label="Beneficiaries per Unit"
+              type="number"
+              value={form.customUomValue ?? '1'}
+              onChange={v => setForm((f: any) => ({ ...f, customUomValue: v }))}
+            />
+            <div className="col-span-2 text-[10px] text-slate-500">
+              Saving adds this as a new entry in the Conversion Factors list below (defaulting to a factor of 1). Person and House Hold (HH) are never affected.
+            </div>
+          </div>
+        )}
+
         <div className="col-span-2"><LabeledInput label="Description" value={form.description || ''} onChange={v => setForm((f: any) => ({ ...f, description: v }))} placeholder="What this activity delivers" /></div>
 
         <div>
@@ -523,9 +621,19 @@ const NationalActivityModal: React.FC<{ form: Partial<NationalActivity>; setForm
           Another National Activity already uses the code "{codeTrimmed}". Codes must be unique — every Report table and filter is labeled by code, not id.
         </div>
       )}
+      {!requiredMissing && otherUomDuplicate && (
+        <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
+          "{customUomNameTrimmed}" already exists in the Conversion Factors list. Close this and select it directly from the UoM dropdown instead of re-adding it as "Other".
+        </div>
+      )}
       {manualNumbersInvalid && (
         <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
           Annual Target and Annual Budget must be zero or greater.
+        </div>
+      )}
+      {otherUomInvalidValue && (
+        <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-[11px] text-rose-700 font-semibold">
+          Beneficiaries per Unit must be zero or greater.
         </div>
       )}
 
@@ -769,6 +877,54 @@ const LabeledInput: React.FC<{ label: string; value: string; onChange: (v: strin
     <input type={type} min={type === 'number' ? 0 : undefined} value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} className="w-full text-xs border border-slate-200 rounded p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-100" />
   </label>
 );
+
+// Person and House Hold (HH) are display-only — their conversion factor is
+// locked and is rendered exactly as before. Any other UoM, including ones
+// created via "Other" on the National Activity form, gets a real input so
+// its factor can be tuned after the fact, without touching Person/HH logic
+// at all.
+const UomFactorCard: React.FC<{ uom: string; factor: number }> = ({ uom, factor }) => {
+  const { updateUomFactor } = useApp();
+  const locked = LOCKED_UOMS.has(uom);
+  const [draft, setDraft] = useState(String(factor));
+
+  useEffect(() => { setDraft(String(factor)); }, [factor]);
+
+  if (locked) {
+    return (
+      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+        <div><div className="text-xs font-bold text-slate-800">{uom}</div><div className="text-[10px] text-slate-500">Beneficiaries per unit</div></div>
+        <div className="flex items-center gap-1">
+          <span className="text-xs font-bold text-slate-400">×</span>
+          <span className="w-14 text-center text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded p-1.5">{factor}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const commit = (raw: string) => {
+    const v = clampFactor(raw);
+    setDraft(String(v));
+    updateUomFactor(uom, v);
+  };
+
+  return (
+    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+      <div><div className="text-xs font-bold text-slate-800">{uom}</div><div className="text-[10px] text-slate-500">Beneficiaries per unit</div></div>
+      <div className="flex items-center gap-1">
+        <span className="text-xs font-bold text-slate-400">×</span>
+        <input
+          type="number"
+          min="0"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={e => commit(e.target.value)}
+          className="w-14 text-center text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-2 focus:ring-red-100"
+        />
+      </div>
+    </div>
+  );
+};
 
 const ModalShell: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
   <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4">
