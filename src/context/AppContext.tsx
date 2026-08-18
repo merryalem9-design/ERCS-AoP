@@ -272,6 +272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (currentRole === 'Regional Coordinator' && pe.scope_type !== 'Regional') { showToast('Regional Coordinator can only edit Regional entries.'); return; }
     if (currentRole === 'Project Coordinator' && pe.scope_type !== 'Project') { showToast('Project Coordinator can only edit Project entries.'); return; }
     const old = planEntries.find(x => x.id === pe.id);
+    if (old?.approval_status === 'Approved') { showToast('This plan entry is already approved and locked. It can no longer be edited.'); return; }
     const next = planEntries.map(x => (x.id === pe.id ? pe : x));
 
     const newParentValidation = getNationalActivityValidation(pe.national_activity_id, next);
@@ -301,6 +302,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!old) return;
     if (currentRole === 'Regional Coordinator' && old.scope_type !== 'Regional') { showToast('Regional Coordinator can only delete Regional entries.'); return; }
     if (currentRole === 'Project Coordinator' && old.scope_type !== 'Project') { showToast('Project Coordinator can only delete Project entries.'); return; }
+    if (old.approval_status === 'Approved') { showToast('This plan entry is already approved and locked. It can no longer be deleted.'); return; }
     const next = planEntries.filter(x => x.id !== id);
     setPlanEntries(next);
     setQuarterlyPlans(prev => prev.filter(qp => qp.plan_entry_id !== id));
