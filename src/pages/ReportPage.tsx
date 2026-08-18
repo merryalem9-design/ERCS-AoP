@@ -27,12 +27,7 @@ import {
   QuarterlyActual,
   QuarterId,
 } from '../types';
-import {
-  Target,
-  Wallet,
-  Users,
-  TrendingUp,
-} from 'lucide-react';
+import { Target, Wallet, Users, TrendingUp } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -84,12 +79,7 @@ export const ReportPage: React.FC = () => {
     Array.from(
       new Set(
         es
-          .map(
-            e =>
-              nationalActivities.find(
-                na => na.id === e.national_activity_id
-              )?.uom
-          )
+          .map(e => nationalActivities.find(na => na.id === e.national_activity_id)?.uom)
           .filter((u): u is string => !!u)
       )
     );
@@ -99,62 +89,21 @@ export const ReportPage: React.FC = () => {
 
   const beneficiariesFor = (entryIds: typeof filteredEntries) =>
     entryIds.reduce((sum, e) => {
-      const na = nationalActivities.find(
-        n => n.id === e.national_activity_id
-      );
-
+      const na = nationalActivities.find(n => n.id === e.national_activity_id);
       const actual = sumActual([e], filteredQuarterlyActuals, q);
-
-      return (
-        sum +
-        convertToBeneficiaries(
-          actual,
-          na?.uom || '',
-          uomConfigs
-        )
-      );
+      return sum + convertToBeneficiaries(actual, na?.uom || '', uomConfigs);
     }, 0);
 
   // Quarter-aware:
   // when a specific quarter is selected, target/budget come from that
   // quarter's Quarterly Plan instead of the full annual figure.
-  const target = sumPlannedTarget(
-    filteredEntries,
-    filteredQuarterlyPlans,
-    q
-  );
-
-  const actual = sumActual(
-    filteredEntries,
-    filteredQuarterlyActuals,
-    q
-  );
-
-  const achievement = achievementPct(
-    actual,
-    target
-  );
-
-  const budget = sumPlannedBudget(
-    filteredEntries,
-    filteredQuarterlyPlans,
-    q
-  );
-
-  const spent = sumExpenditure(
-    filteredEntries,
-    filteredQuarterlyActuals,
-    q
-  );
-
-  const utilization = budgetUtilizationPct(
-    spent,
-    budget
-  );
-
-  const beneficiaries = beneficiariesFor(
-    filteredEntries
-  );
+  const target = sumPlannedTarget(filteredEntries, filteredQuarterlyPlans, q);
+  const actual = sumActual(filteredEntries, filteredQuarterlyActuals, q);
+  const achievement = achievementPct(actual, target);
+  const budget = sumPlannedBudget(filteredEntries, filteredQuarterlyPlans, q);
+  const spent = sumExpenditure(filteredEntries, filteredQuarterlyActuals, q);
+  const utilization = budgetUtilizationPct(spent, budget);
+  const beneficiaries = beneficiariesFor(filteredEntries);
 
   // How many entries in scope have no Quarterly Plan set for the selected
   // quarter — within the current report view (e.g. in the "Approved" view,
@@ -162,12 +111,7 @@ export const ReportPage: React.FC = () => {
   const missingQuarterlyPlanCount =
     q && q !== 'ALL'
       ? filteredEntries.filter(
-          e =>
-            !filteredQuarterlyPlans.some(
-              qp =>
-                qp.plan_entry_id === e.id &&
-                qp.quarter_id === q
-            )
+          e => !filteredQuarterlyPlans.some(qp => qp.plan_entry_id === e.id && qp.quarter_id === q)
         ).length
       : 0;
 
@@ -177,42 +121,14 @@ export const ReportPage: React.FC = () => {
 
   const byStrategy = strategicPriorities
     .map(sp => {
-      const naIds = nationalActivities
-        .filter(
-          na =>
-            na.strategic_priority_id === sp.id
-        )
-        .map(na => na.id);
-
-      const es = filteredEntries.filter(e =>
-        naIds.includes(e.national_activity_id)
-      );
-
+      const naIds = nationalActivities.filter(na => na.strategic_priority_id === sp.id).map(na => na.id);
+      const es = filteredEntries.filter(e => naIds.includes(e.national_activity_id));
       if (es.length === 0) return null;
 
-      const t = sumPlannedTarget(
-        es,
-        filteredQuarterlyPlans,
-        q
-      );
-
-      const a = sumActual(
-        es,
-        filteredQuarterlyActuals,
-        q
-      );
-
-      const b = sumPlannedBudget(
-        es,
-        filteredQuarterlyPlans,
-        q
-      );
-
-      const x = sumExpenditure(
-        es,
-        filteredQuarterlyActuals,
-        q
-      );
+      const t = sumPlannedTarget(es, filteredQuarterlyPlans, q);
+      const a = sumActual(es, filteredQuarterlyActuals, q);
+      const b = sumPlannedBudget(es, filteredQuarterlyPlans, q);
+      const x = sumExpenditure(es, filteredQuarterlyActuals, q);
 
       return {
         key: sp.id,
@@ -226,10 +142,7 @@ export const ReportPage: React.FC = () => {
         uoms: uomsFor(es),
       };
     })
-    .filter(
-      (r): r is NonNullable<typeof r> =>
-        r !== null
-    );
+    .filter((r): r is NonNullable<typeof r> => r !== null);
 
   // ---------------------------------------------------------------------------
   // BREAKDOWN BY NATIONAL ACTIVITY
@@ -237,46 +150,20 @@ export const ReportPage: React.FC = () => {
 
   const byNational = nationalActivities
     .map(na => {
-      const es = filteredEntries.filter(
-        e =>
-          e.national_activity_id === na.id
-      );
-
+      const es = filteredEntries.filter(e => e.national_activity_id === na.id);
       if (es.length === 0) return null;
 
-      const t = sumPlannedTarget(
-        es,
-        filteredQuarterlyPlans,
-        q
-      );
-
-      const a = sumActual(
-        es,
-        filteredQuarterlyActuals,
-        q
-      );
-
-      const b = sumPlannedBudget(
-        es,
-        filteredQuarterlyPlans,
-        q
-      );
-
-      const x = sumExpenditure(
-        es,
-        filteredQuarterlyActuals,
-        q
-      );
+      const t = sumPlannedTarget(es, filteredQuarterlyPlans, q);
+      const a = sumActual(es, filteredQuarterlyActuals, q);
+      const b = sumPlannedBudget(es, filteredQuarterlyPlans, q);
+      const x = sumExpenditure(es, filteredQuarterlyActuals, q);
 
       // When viewing ALL, use the official annual target stored
       // on the National Activity.
       //
       // When viewing Approved / Draft, use the sum of the entries
       // included in the selected report status.
-      const officialTarget =
-        reportApprovalStatus === 'ALL'
-          ? na.annual_target
-          : sumTarget(es);
+      const officialTarget = reportApprovalStatus === 'ALL' ? na.annual_target : sumTarget(es);
 
       return {
         key: na.id,
@@ -291,10 +178,7 @@ export const ReportPage: React.FC = () => {
         uoms: [na.uom],
       };
     })
-    .filter(
-      (r): r is NonNullable<typeof r> =>
-        r !== null
-    );
+    .filter((r): r is NonNullable<typeof r> => r !== null);
 
   // ---------------------------------------------------------------------------
   // BREAKDOWN BY REGION
@@ -302,35 +186,13 @@ export const ReportPage: React.FC = () => {
 
   const byRegion = regions
     .map(r => {
-      const es = filteredEntries.filter(
-        e => e.region_id === r.id
-      );
-
+      const es = filteredEntries.filter(e => e.region_id === r.id);
       if (es.length === 0) return null;
 
-      const t = sumPlannedTarget(
-        es,
-        filteredQuarterlyPlans,
-        q
-      );
-
-      const a = sumActual(
-        es,
-        filteredQuarterlyActuals,
-        q
-      );
-
-      const b = sumPlannedBudget(
-        es,
-        filteredQuarterlyPlans,
-        q
-      );
-
-      const x = sumExpenditure(
-        es,
-        filteredQuarterlyActuals,
-        q
-      );
+      const t = sumPlannedTarget(es, filteredQuarterlyPlans, q);
+      const a = sumActual(es, filteredQuarterlyActuals, q);
+      const b = sumPlannedBudget(es, filteredQuarterlyPlans, q);
+      const x = sumExpenditure(es, filteredQuarterlyActuals, q);
 
       return {
         key: r.id,
@@ -344,10 +206,7 @@ export const ReportPage: React.FC = () => {
         uoms: uomsFor(es),
       };
     })
-    .filter(
-      (r): r is NonNullable<typeof r> =>
-        r !== null
-    );
+    .filter((r): r is NonNullable<typeof r> => r !== null);
 
   // ---------------------------------------------------------------------------
   // BREAKDOWN BY PROJECT
@@ -355,35 +214,13 @@ export const ReportPage: React.FC = () => {
 
   const byProject = projects
     .map(p => {
-      const es = filteredEntries.filter(
-        e => e.project_id === p.id
-      );
-
+      const es = filteredEntries.filter(e => e.project_id === p.id);
       if (es.length === 0) return null;
 
-      const t = sumPlannedTarget(
-        es,
-        filteredQuarterlyPlans,
-        q
-      );
-
-      const a = sumActual(
-        es,
-        filteredQuarterlyActuals,
-        q
-      );
-
-      const b = sumPlannedBudget(
-        es,
-        filteredQuarterlyPlans,
-        q
-      );
-
-      const x = sumExpenditure(
-        es,
-        filteredQuarterlyActuals,
-        q
-      );
+      const t = sumPlannedTarget(es, filteredQuarterlyPlans, q);
+      const a = sumActual(es, filteredQuarterlyActuals, q);
+      const b = sumPlannedBudget(es, filteredQuarterlyPlans, q);
+      const x = sumExpenditure(es, filteredQuarterlyActuals, q);
 
       return {
         key: p.id,
@@ -397,10 +234,7 @@ export const ReportPage: React.FC = () => {
         uoms: uomsFor(es),
       };
     })
-    .filter(
-      (r): r is NonNullable<typeof r> =>
-        r !== null
-    );
+    .filter((r): r is NonNullable<typeof r> => r !== null);
 
   // ---------------------------------------------------------------------------
   // CHART
@@ -411,30 +245,18 @@ export const ReportPage: React.FC = () => {
       ? filteredEntries.map(e => {
           const label =
             e.scope_type === 'Regional'
-              ? regions.find(
-                  r => r.id === e.region_id
-                )?.name
-              : projects.find(
-                  p => p.id === e.project_id
-                )?.name;
+              ? regions.find(r => r.id === e.region_id)?.name
+              : projects.find(p => p.id === e.project_id)?.name;
 
           const plannedTarget =
             q && q !== 'ALL'
-              ? filteredQuarterlyPlans.find(
-                  qp =>
-                    qp.plan_entry_id === e.id &&
-                    qp.quarter_id === q
-                )?.target || 0
+              ? filteredQuarterlyPlans.find(qp => qp.plan_entry_id === e.id && qp.quarter_id === q)?.target || 0
               : e.annual_target;
 
           return {
             name: label || e.id,
             Target: plannedTarget,
-            Actual: sumActual(
-              [e],
-              filteredQuarterlyActuals,
-              q
-            ),
+            Actual: sumActual([e], filteredQuarterlyActuals, q),
           };
         })
       : byNational.map(row => ({
@@ -450,22 +272,16 @@ export const ReportPage: React.FC = () => {
       {/* ------------------------------------------------------------------ */}
 
       <div>
-        <h2 className="text-xl font-black text-slate-800">
-          Step 4 — Aggregated Report
-        </h2>
+        <h2 className="text-xl font-black text-slate-800">Step 4 — Aggregated Report</h2>
 
         <p className="text-xs text-slate-500 mt-1">
-          Everything below is derived live from the
-          Plan, Quarterly Plan and Quarterly Actual
-          Entry pages. Each level — the Plan Entry itself, and each
-          quarter's Plan and Actual — has its own approval status; the
-          Approved view below only counts rows that are themselves
-          Approved, quarter by quarter. When a specific quarter is
-          selected, Achievement and Budget Utilization
-          compare against that quarter's Quarterly Plan
-          rather than the full annual target — otherwise
-          summed up by Strategic Priority, National
-          Activity, Region and Project.
+          Everything below is derived live from the Plan, Quarterly Plan and Quarterly Actual
+          Entry pages. Each level — the Plan Entry itself, and each quarter's Plan and Actual —
+          has its own approval status; the Approved view below only counts rows that are
+          themselves Approved, quarter by quarter. When a specific quarter is selected,
+          Achievement and Budget Utilization compare against that quarter's Quarterly Plan
+          rather than the full annual target — otherwise summed up by Strategic Priority,
+          National Activity, Region and Project.
         </p>
       </div>
 
@@ -482,8 +298,7 @@ export const ReportPage: React.FC = () => {
             : 'bg-amber-50 border-amber-200 text-amber-800'
         }`}
       >
-        {reportApprovalStatus ===
-        'Approved'
+        {reportApprovalStatus === 'Approved'
           ? 'Only entries and quarterly submissions Approved by the National Activity AOP are included here — the Plan Entry AND the specific Quarterly Plan / Quarterly Actual for the selected quarter must each be Approved to count.'
           : reportApprovalStatus === 'Draft'
           ? 'Draft view includes everything not yet Approved — Plan Entries, Quarterly Plans and Quarterly Actuals that are still Draft, Pending Approval or Rejected.'
@@ -502,20 +317,11 @@ export const ReportPage: React.FC = () => {
           singleUom={singleUom}
           uomsInScope={uomsInScope}
           hasActuals={actual > 0}
-          missingPlanCount={
-            missingQuarterlyPlanCount
-          }
-          quarterId={
-            q !== 'ALL' ? q : ''
-          }
+          missingPlanCount={missingQuarterlyPlanCount}
+          quarterId={q !== 'ALL' ? q : ''}
         />
 
-        <BudgetKPICard
-          utilization={utilization}
-          spent={spent}
-          budget={budget}
-          hasSpend={spent > 0}
-        />
+        <BudgetKPICard utilization={utilization} spent={spent} budget={budget} hasSpend={spent > 0} />
 
         <KPICard
           title="Beneficiaries Reached"
@@ -526,9 +332,7 @@ export const ReportPage: React.FC = () => {
 
         <KPICard
           title="Plan Entries in Scope"
-          val={String(
-            filteredEntries.length
-          )}
+          val={String(filteredEntries.length)}
           sub="Matching current filters"
           icon={TrendingUp}
         />
@@ -540,44 +344,20 @@ export const ReportPage: React.FC = () => {
 
       <div className="bg-white p-5 border rounded-xl shadow-sm h-72">
         <h3 className="text-xs font-bold mb-4 uppercase tracking-wide text-slate-600">
-          {filters.nationalActivityId !==
-          'ALL'
+          {filters.nationalActivityId !== 'ALL'
             ? 'Target vs Actual — by Region / Project'
             : 'Target vs Actual — by National Activity'}
         </h3>
 
-        <ResponsiveContainer
-          width="100%"
-          height="100%"
-        >
+        <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              vertical={false}
-            />
-
-            <XAxis
-              dataKey="name"
-              tick={{ fontSize: 10 }}
-            />
-
-            <YAxis
-              tick={{ fontSize: 10 }}
-            />
-
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+            <YAxis tick={{ fontSize: 10 }} />
             <Tooltip />
-
             <Legend />
-
-            <Bar
-              dataKey="Target"
-              fill="#cbd5e1"
-            />
-
-            <Bar
-              dataKey="Actual"
-              fill="#C8102E"
-            />
+            <Bar dataKey="Target" fill="#cbd5e1" />
+            <Bar dataKey="Actual" fill="#C8102E" />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -588,14 +368,10 @@ export const ReportPage: React.FC = () => {
 
       <ExecutionEntriesTable
         entries={filteredEntries}
-        nationalActivities={
-          nationalActivities
-        }
+        nationalActivities={nationalActivities}
         regions={regions}
         projects={projects}
-        quarterlyActuals={
-          filteredQuarterlyActuals
-        }
+        quarterlyActuals={filteredQuarterlyActuals}
         quarterlyPlans={filteredQuarterlyPlans}
         rawQuarterlyPlans={quarterlyPlans}
         rawQuarterlyActuals={quarterlyActuals}
@@ -606,33 +382,20 @@ export const ReportPage: React.FC = () => {
       {/* BREAKDOWN TABLES                                                   */}
       {/* ------------------------------------------------------------------ */}
 
-      <ReportTable
-        title="By Strategic Priority"
-        rows={byStrategy}
-      />
+      <ReportTable title="By Strategic Priority" rows={byStrategy} />
 
       <ReportTable
         title="By National Activity"
         rows={byNational}
         extraColumn={{
-          label:
-            reportApprovalStatus === 'ALL'
-              ? 'Official Target (Annual)'
-              : `${reportApprovalStatus} Target (Annual)`,
-          get: r =>
-            `${r.officialTarget.toLocaleString()} ${r.uoms[0]}`,
+          label: reportApprovalStatus === 'ALL' ? 'Official Target (Annual)' : `${reportApprovalStatus} Target (Annual)`,
+          get: r => `${r.officialTarget.toLocaleString()} ${r.uoms[0]}`,
         }}
       />
 
-      <ReportTable
-        title="By Region"
-        rows={byRegion}
-      />
+      <ReportTable title="By Region" rows={byRegion} />
 
-      <ReportTable
-        title="By Project"
-        rows={byProject}
-      />
+      <ReportTable title="By Project" rows={byProject} />
     </div>
   );
 };
@@ -641,25 +404,16 @@ export const ReportPage: React.FC = () => {
 // KPI CARD
 // ===========================================================================
 
-const KPICard = ({
-  title,
-  val,
-  sub,
-  icon: Icon,
-}: any) => (
+const KPICard = ({ title, val, sub, icon: Icon }: any) => (
   <div className="bg-white p-4 rounded-xl border shadow-sm">
     <div className="flex justify-between mb-2 text-xs font-bold text-slate-500">
       <span>{title}</span>
       <Icon className="w-4 h-4" />
     </div>
 
-    <div className="text-2xl font-black">
-      {val}
-    </div>
+    <div className="text-2xl font-black">{val}</div>
 
-    <div className="text-[10px] mt-1 text-slate-500">
-      {sub}
-    </div>
+    <div className="text-[10px] mt-1 text-slate-500">{sub}</div>
   </div>
 );
 
@@ -667,10 +421,7 @@ const KPICard = ({
 // ACHIEVEMENT KPI
 // ===========================================================================
 
-const ACHIEVEMENT_TONE: Record
-  string,
-  string
-> = {
+const ACHIEVEMENT_TONE: Record<string, string> = {
   Overachieved: 'text-indigo-600',
   Completed: 'text-emerald-600',
   'On Track': 'text-emerald-600',
@@ -688,24 +439,9 @@ const AchievementKPICard: React.FC<{
   hasActuals: boolean;
   missingPlanCount: number;
   quarterId: string;
-}> = ({
-  achievement,
-  actual,
-  target,
-  singleUom,
-  uomsInScope,
-  hasActuals,
-  missingPlanCount,
-  quarterId,
-}) => {
-  const badge = getStatusBadge(
-    achievement,
-    hasActuals
-  );
-
-  const tone =
-    ACHIEVEMENT_TONE[badge.label] ||
-    'text-slate-800';
+}> = ({ achievement, actual, target, singleUom, uomsInScope, hasActuals, missingPlanCount, quarterId }) => {
+  const badge = getStatusBadge(achievement, hasActuals);
+  const tone = ACHIEVEMENT_TONE[badge.label] || 'text-slate-800';
 
   return (
     <div className="bg-white p-4 rounded-xl border shadow-sm">
@@ -714,48 +450,30 @@ const AchievementKPICard: React.FC<{
         <Target className="w-4 h-4" />
       </div>
 
-      <div
-        className={`text-2xl font-black ${tone}`}
-      >
-        {achievement.toFixed(1)}%
-      </div>
+      <div className={`text-2xl font-black ${tone}`}>{achievement.toFixed(1)}%</div>
 
       <div className="text-[10px] mt-1 text-slate-500">
-        {actual.toLocaleString()} /{' '}
-        {target.toLocaleString()}
-        {singleUom
-          ? ` ${singleUom}`
-          : ''}
+        {actual.toLocaleString()} / {target.toLocaleString()}
+        {singleUom ? ` ${singleUom}` : ''}
       </div>
 
       <div className="mt-2">
-        <span
-          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.color}`}
-        >
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.color}`}>
           {badge.label}
         </span>
       </div>
 
       {uomsInScope.length > 1 && (
         <div className="mt-2 text-[9px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 font-semibold">
-          ⚠ Mixed units in scope (
-          {uomsInScope.join(', ')}) — this %
-          sums raw counts across different
-          UOMs and is not a real unit.
-          Filter to one National Activity
-          for a precise reading.
+          ⚠ Mixed units in scope ({uomsInScope.join(', ')}) — this % sums raw counts across different
+          UOMs and is not a real unit. Filter to one National Activity for a precise reading.
         </div>
       )}
 
       {missingPlanCount > 0 && (
         <div className="mt-2 text-[9px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 font-semibold">
-          ⚠ {missingPlanCount} plan{' '}
-          {missingPlanCount === 1
-            ? 'entry has'
-            : 'entries have'}{' '}
-          no {quarterId} Quarterly Plan
-          counted in this view — counted as 0
-          planned in this comparison.
+          ⚠ {missingPlanCount} plan {missingPlanCount === 1 ? 'entry has' : 'entries have'} no {quarterId} Quarterly Plan
+          counted in this view — counted as 0 planned in this comparison.
         </div>
       )}
     </div>
@@ -766,10 +484,7 @@ const AchievementKPICard: React.FC<{
 // BUDGET KPI
 // ===========================================================================
 
-const BUDGET_TONE: Record
-  string,
-  string
-> = {
+const BUDGET_TONE: Record<string, string> = {
   'Over Budget': 'text-rose-600',
   'Near Limit': 'text-amber-600',
   'On Budget': 'text-emerald-600',
@@ -781,21 +496,9 @@ const BudgetKPICard: React.FC<{
   spent: number;
   budget: number;
   hasSpend: boolean;
-}> = ({
-  utilization,
-  spent,
-  budget,
-  hasSpend,
-}) => {
-  const badge =
-    getBudgetStatusBadge(
-      utilization,
-      hasSpend
-    );
-
-  const tone =
-    BUDGET_TONE[badge.label] ||
-    'text-slate-800';
+}> = ({ utilization, spent, budget, hasSpend }) => {
+  const badge = getBudgetStatusBadge(utilization, hasSpend);
+  const tone = BUDGET_TONE[badge.label] || 'text-slate-800';
 
   return (
     <div className="bg-white p-4 rounded-xl border shadow-sm">
@@ -804,21 +507,14 @@ const BudgetKPICard: React.FC<{
         <Wallet className="w-4 h-4" />
       </div>
 
-      <div
-        className={`text-2xl font-black ${tone}`}
-      >
-        {utilization.toFixed(1)}%
-      </div>
+      <div className={`text-2xl font-black ${tone}`}>{utilization.toFixed(1)}%</div>
 
       <div className="text-[10px] mt-1 text-slate-500">
-        ETB {spent.toLocaleString()} /{' '}
-        {budget.toLocaleString()}
+        ETB {spent.toLocaleString()} / {budget.toLocaleString()}
       </div>
 
       <div className="mt-2">
-        <span
-          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.color}`}
-        >
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.color}`}>
           {badge.label}
         </span>
       </div>
@@ -867,7 +563,9 @@ const ExecutionEntriesTable: React.FC<{
       return status ? <ApprovalStatusBadge status={status} /> : <span className="text-slate-300">—</span>;
     }
     const totalQuarters = rawQuarterlyActuals.filter(a => a.plan_entry_id === pe.id).length;
-    const approvedQuarters = rawQuarterlyActuals.filter(a => a.plan_entry_id === pe.id && a.approval_status === 'Approved').length;
+    const approvedQuarters = rawQuarterlyActuals.filter(
+      a => a.plan_entry_id === pe.id && a.approval_status === 'Approved'
+    ).length;
     return <span className="text-[10px] font-bold text-slate-600">{approvedQuarters}/{totalQuarters || 4} Approved</span>;
   };
 
@@ -896,16 +594,18 @@ const ExecutionEntriesTable: React.FC<{
             {entries.map(pe => {
               const na = nationalActivities.find(n => n.id === pe.national_activity_id);
 
-              const scopeName = pe.scope_type === 'Regional'
-                ? regions.find(r => r.id === pe.region_id)?.name
-                : projects.find(p => p.id === pe.project_id)?.name;
+              const scopeName =
+                pe.scope_type === 'Regional'
+                  ? regions.find(r => r.id === pe.region_id)?.name
+                  : projects.find(p => p.id === pe.project_id)?.name;
 
               const actual = sumActual([pe], quarterlyActuals, quarterId);
               const spent = sumExpenditure([pe], quarterlyActuals, quarterId);
 
-              const target = quarterId && quarterId !== 'ALL'
-                ? quarterlyPlans.find(qp => qp.plan_entry_id === pe.id && qp.quarter_id === quarterId)?.target || 0
-                : pe.annual_target;
+              const target =
+                quarterId && quarterId !== 'ALL'
+                  ? quarterlyPlans.find(qp => qp.plan_entry_id === pe.id && qp.quarter_id === quarterId)?.target || 0
+                  : pe.annual_target;
 
               return (
                 <tr key={pe.id} className="hover:bg-slate-50">
@@ -969,11 +669,7 @@ const ReportTable: React.FC<{
     label: string;
     get: (r: any) => string;
   };
-}> = ({
-  title,
-  rows,
-  extraColumn,
-}) => (
+}> = ({ title, rows, extraColumn }) => (
   <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
     <div className="p-4 border-b bg-slate-50 text-xs font-bold text-slate-800 uppercase tracking-wider">
       {title} ({rows.length})
@@ -983,144 +679,64 @@ const ReportTable: React.FC<{
       <table className="w-full text-left text-xs">
         <thead className="bg-slate-50 text-slate-600 font-bold uppercase border-b">
           <tr>
-            <th className="p-3">
-              Name
-            </th>
+            <th className="p-3">Name</th>
 
-            {extraColumn && (
-              <th className="p-3 text-right">
-                {extraColumn.label}
-              </th>
-            )}
+            {extraColumn && <th className="p-3 text-right">{extraColumn.label}</th>}
 
-            <th className="p-3 text-right">
-              Target
-            </th>
-
-            <th className="p-3 text-right">
-              Actual
-            </th>
-
-            <th className="p-3 text-right">
-              Achievement
-            </th>
-
-            <th className="p-3 text-right">
-              Budget (ETB)
-            </th>
-
-            <th className="p-3 text-right">
-              Spent (ETB)
-            </th>
-
-            <th className="p-3 text-right">
-              Beneficiaries
-            </th>
-
-            <th className="p-3 text-center">
-              Status
-            </th>
-
-            <th className="p-3 text-center">
-              Budget Status
-            </th>
+            <th className="p-3 text-right">Target</th>
+            <th className="p-3 text-right">Actual</th>
+            <th className="p-3 text-right">Achievement</th>
+            <th className="p-3 text-right">Budget (ETB)</th>
+            <th className="p-3 text-right">Spent (ETB)</th>
+            <th className="p-3 text-right">Beneficiaries</th>
+            <th className="p-3 text-center">Status</th>
+            <th className="p-3 text-center">Budget Status</th>
           </tr>
         </thead>
 
         <tbody className="divide-y">
           {rows.map(r => {
-            const rowBudgetUtil =
-              budgetUtilizationPct(
-                r.spent,
-                r.budget
-              );
-
-            const mixedUnits =
-              r.uoms.length > 1;
-
-            const unitSuffix =
-              r.uoms.length === 1
-                ? ` ${r.uoms[0]}`
-                : '';
+            const rowBudgetUtil = budgetUtilizationPct(r.spent, r.budget);
+            const mixedUnits = r.uoms.length > 1;
+            const unitSuffix = r.uoms.length === 1 ? ` ${r.uoms[0]}` : '';
 
             return (
-              <tr
-                key={r.key}
-                className="hover:bg-slate-50"
-              >
+              <tr key={r.key} className="hover:bg-slate-50">
                 <td className="p-3 font-bold text-slate-800">
                   <div>{r.name}</div>
 
                   {mixedUnits && (
                     <div
                       className="mt-1 inline-flex items-center gap-1 text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
-                      title={`Mixed units (${r.uoms.join(
-                        ', '
-                      )}) — Target, Actual and Achievement for this row sum raw counts across different UOMs and are not a real, comparable number.`}
+                      title={`Mixed units (${r.uoms.join(', ')}) — Target, Actual and Achievement for this row sum raw counts across different UOMs and are not a real, comparable number.`}
                     >
                       ⚠ Mixed Units
                     </div>
                   )}
                 </td>
 
-                {extraColumn && (
-                  <td className="p-3 text-right text-slate-500">
-                    {extraColumn.get(r)}
-                  </td>
-                )}
+                {extraColumn && <td className="p-3 text-right text-slate-500">{extraColumn.get(r)}</td>}
 
-                <td className="p-3 text-right">
-                  {r.target.toLocaleString()}
-                  {unitSuffix}
-                </td>
+                <td className="p-3 text-right">{r.target.toLocaleString()}{unitSuffix}</td>
 
-                <td className="p-3 text-right font-bold">
-                  {r.actual.toLocaleString()}
-                  {unitSuffix}
-                </td>
+                <td className="p-3 text-right font-bold">{r.actual.toLocaleString()}{unitSuffix}</td>
 
-                <td className="p-3 text-right font-black">
-                  {r.achievement.toFixed(1)}%
-                </td>
+                <td className="p-3 text-right font-black">{r.achievement.toFixed(1)}%</td>
 
-                <td className="p-3 text-right">
-                  {r.budget.toLocaleString()}
-                </td>
+                <td className="p-3 text-right">{r.budget.toLocaleString()}</td>
 
-                <td
-                  className={`p-3 text-right font-bold ${
-                    rowBudgetUtil > 100
-                      ? 'text-rose-600'
-                      : 'text-emerald-700'
-                  }`}
-                >
+                <td className={`p-3 text-right font-bold ${rowBudgetUtil > 100 ? 'text-rose-600' : 'text-emerald-700'}`}>
                   {r.spent.toLocaleString()}
                 </td>
 
-                <td className="p-3 text-right font-black text-blue-600">
-                  {r.beneficiaries.toLocaleString()}
+                <td className="p-3 text-right font-black text-blue-600">{r.beneficiaries.toLocaleString()}</td>
+
+                <td className="p-3 text-center">
+                  <StatusBadge achievementPct={r.achievement} hasActuals={r.actual > 0} />
                 </td>
 
                 <td className="p-3 text-center">
-                  <StatusBadge
-                    achievementPct={
-                      r.achievement
-                    }
-                    hasActuals={
-                      r.actual > 0
-                    }
-                  />
-                </td>
-
-                <td className="p-3 text-center">
-                  <BudgetStatusBadge
-                    utilizationPct={
-                      rowBudgetUtil
-                    }
-                    hasSpend={
-                      r.spent > 0
-                    }
-                  />
+                  <BudgetStatusBadge utilizationPct={rowBudgetUtil} hasSpend={r.spent > 0} />
                 </td>
               </tr>
             );
@@ -1128,14 +744,8 @@ const ReportTable: React.FC<{
 
           {rows.length === 0 && (
             <tr>
-              <td
-                colSpan={
-                  extraColumn ? 10 : 9
-                }
-                className="p-6 text-center text-slate-500"
-              >
-                No data for this filter
-                yet.
+              <td colSpan={extraColumn ? 10 : 9} className="p-6 text-center text-slate-500">
+                No data for this filter yet.
               </td>
             </tr>
           )}
