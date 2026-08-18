@@ -47,6 +47,7 @@ interface AppContextType {
   addZone: (z: Zone) => void;
 
   projects: Project[];
+  addProject: (p: Project) => void;
   quarters: Quarter[];
 
   planEntries: PlanEntry[];
@@ -139,7 +140,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [nationalActivities, setNationalActivities] = useState<NationalActivity[]>(() => readPersisted('nationalActivities', INITIAL_NATIONAL_ACTIVITIES));
   const [regions, setRegions] = useState<Region[]>(() => readPersisted('regions', INITIAL_REGIONS));
   const [zones, setZones] = useState<Zone[]>(() => readPersisted('zones', INITIAL_ZONES));
-  const [projects] = useState<Project[]>(INITIAL_PROJECTS);
+  const [projects, setProjects] = useState<Project[]>(() => readPersisted('projects', INITIAL_PROJECTS));
   const [quarters] = useState<Quarter[]>(FISCAL_QUARTERS);
   const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => migratePlanEntries(readPersisted('planEntries', INITIAL_PLAN_ENTRIES)));
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>(() => migrateQuarterlyPlans(readPersisted('quarterlyPlans', INITIAL_QUARTERLY_PLANS)));
@@ -152,12 +153,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (typeof window === 'undefined') return;
     try {
       window.localStorage.setItem(PERSISTENCE_KEY, JSON.stringify({
-        activeRoute, currentRole, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters, reportApprovalStatus,
+        activeRoute, currentRole, selectedNationalActivityId, nationalActivities, regions, zones, projects, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters, reportApprovalStatus,
       }));
     } catch {
       // localStorage may be unavailable; in-memory state still works for the session.
     }
-  }, [activeRoute, currentRole, selectedNationalActivityId, nationalActivities, regions, zones, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters, reportApprovalStatus]);
+  }, [activeRoute, currentRole, selectedNationalActivityId, nationalActivities, regions, zones, projects, planEntries, quarterlyPlans, quarterlyActuals, uomConfigs, filters, reportApprovalStatus]);
 
   const showToast = (msg: string) => { setToastMessage(msg); setTimeout(() => setToastMessage(null), 3000); };
   const resetFilters = () => setFilters(DEFAULT_FILTERS);
@@ -204,6 +205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addRegion = (r: Region) => { setRegions(prev => [...prev, r]); showToast(`Region ${r.name} added.`); };
   const addZone = (z: Zone) => { setZones(prev => [...prev, z]); showToast(`Zone ${z.name} added.`); };
+  const addProject = (p: Project) => { setProjects(prev => [...prev, p]); showToast(`Project ${p.name} added.`); };
 
   // ---------------------------------------------------------------------
   // National Activity ceilings are fixed parent limits. Plan Entries roll
@@ -482,7 +484,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       nationalActivities, addNationalActivity, updateNationalActivity, deleteNationalActivity,
       regions, addRegion,
       zones, addZone,
-      projects, quarters,
+      projects, addProject, quarters,
       planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry, submitPlanEntry, approvePlanEntry, rejectPlanEntry,
       quarterlyPlans, upsertQuarterlyPlan, submitQuarterlyPlan, approveQuarterlyPlan, rejectQuarterlyPlan,
       quarterlyActuals, upsertQuarterlyActual, submitQuarterlyActual, approveQuarterlyActual, rejectQuarterlyActual,

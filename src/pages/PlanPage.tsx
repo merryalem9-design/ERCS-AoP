@@ -5,7 +5,7 @@ import { FilterBar } from '../components/common/FilterBar';
 import { ApprovalStatusBadge } from '../components/common/ApprovalStatusBadge';
 import { sumTarget, sumBudget } from '../utils/calculations';
 import { buildActivityCode } from '../utils/activityCode';
-import { NationalActivity, PlanEntry, ScopeType, Region, Zone, Responsibility } from '../types';
+import { NationalActivity, PlanEntry, ScopeType, Region, Zone, Project, Responsibility } from '../types';
 import { AlertTriangle, ArrowUpRight, CheckCircle2, ChevronRight, Layers, Plus, Save, Trash2, X } from 'lucide-react';
 
 const RESPONSIBILITY_OPTIONS: Responsibility[] = ['HQ', 'Branch', 'Both'];
@@ -662,9 +662,11 @@ const PlanEntryWizardModal: React.FC<{
   onClose: () => void;
   onSaved: () => void;
 }> = ({ initial, startStep, onClose, onSaved }) => {
-  const { strategicPriorities, nationalActivities, regions, projects, planEntries, addPlanEntry, updatePlanEntry, currentRole } = useApp();
+  const { strategicPriorities, nationalActivities, regions, projects, addProject, planEntries, addPlanEntry, updatePlanEntry, currentRole } = useApp();
   const [step, setStep] = useState<1 | 2>(startStep);
   const [form, setForm] = useState<PeWizardFormState>(initial);
+  const [addingProject, setAddingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
 
   const savingRef = useRef(false);
 
@@ -722,6 +724,16 @@ const PlanEntryWizardModal: React.FC<{
     const label = effectiveScope === 'Regional' ? regions.find(r => r.id === form.region_id)?.name : projects.find(p => p.id === form.project_id)?.name;
     if (label) setForm(f => ({ ...f, activity_name: label }));
   }, [form.activity_name, form.region_id, form.project_id, effectiveScope, regions, projects]);
+
+  const handleAddProject = () => {
+    const name = newProjectName.trim();
+    if (!name) return;
+    const project: Project = { id: `proj-${Date.now()}`, name };
+    addProject(project);
+    setForm(f => ({ ...f, project_id: project.id }));
+    setNewProjectName('');
+    setAddingProject(false);
+  };
 
   const handleSave = () => {
     if (!canSave || savingRef.current) return;
@@ -843,11 +855,25 @@ const PlanEntryWizardModal: React.FC<{
           )}
           {effectiveScope === 'Project' && (
             <div>
-              <span className="block text-[10px] font-bold text-slate-500 mb-1">Project</span>
+              <div className="flex items-center justify-between mb-1">
+                <span className="block text-[10px] font-bold text-slate-500">Project</span>
+                <button type="button" onClick={() => setAddingProject(a => !a)} className="text-[10px] font-bold text-ercs-red">+ Add Project</button>
+              </div>
               <select value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))} className="w-full text-xs border rounded p-2 bg-slate-50">
                 <option value="">Select project…</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
+              {addingProject && (
+                <div className="mt-2 flex gap-1.5">
+                  <input
+                    value={newProjectName}
+                    onChange={e => setNewProjectName(e.target.value)}
+                    placeholder="New project name"
+                    className="flex-1 text-xs border border-slate-200 rounded p-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-red-100"
+                  />
+                  <button type="button" onClick={handleAddProject} className="px-2.5 py-1 rounded bg-ercs-red text-white text-[10px] font-bold">Add</button>
+                </div>
+              )}
             </div>
           )}
 
