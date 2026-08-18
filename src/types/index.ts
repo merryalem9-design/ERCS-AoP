@@ -5,19 +5,26 @@
 //
 //   Strategic Priority (grouping)
 //     -> National Activity (data entry, auto-synced from Plan Entries)
-//       -> Plan Entry (data entry — the fixed annual target/budget for a Region/Project)
-//         -> Quarterly Plan (data entry — Q1-Q4 breakdown of that Plan Entry;
-//                             does NOT overwrite the Plan Entry, just reconciles against it)
+//       -> Plan Entry (data entry — the fixed annual target/budget for a
+//                       Region/Project; itself goes through
+//                       Draft -> Pending Approval -> Approved/Rejected)
+//         -> Quarterly Plan (data entry — Q1-Q4 breakdown of that Plan
+//                             Entry; does NOT overwrite the Plan Entry, just
+//                             reconciles against it. EACH QUARTER has its own
+//                             Draft -> Pending Approval -> Approved/Rejected
+//                             cycle, submitted by the Coordinator and
+//                             approved by the National Activity AOP. Once
+//                             Approved, that quarter is locked from editing.)
 //           -> Quarterly Actual (data entry — reported per quarter, measured
-//                                 against that quarter's Quarterly Plan)
+//                                 against that quarter's Quarterly Plan. Goes
+//                                 through the SAME per-quarter approval cycle
+//                                 as Quarterly Plan, independently.)
 //             -> Beneficiaries = Actual x UoM Conversion Factor   (conversion)
 //               -> Summed by Strategic Priority / National Activity / Region / Project (aggregation)
-//                 -> Report Page                                  (reporting)
-//
-// User roles and approval workflows have been removed for this stage so the
-// core pipeline is not obscured. Strategic Priorities were reintroduced as a
-// lightweight grouping layer above National Activity, used only for
-// filtering/aggregation — no separate workflow attached to it.
+//                 -> Report Page — the "Approved" view only counts Plan
+//                    Entries AND Quarterly Plan/Actual rows that are
+//                    themselves Approved; the "Draft" view shows everything
+//                    not yet Approved.                            (reporting)
 // ---------------------------------------------------------------------------
 
 /** Top-level grouping — a Strategic Priority that National Activities roll up into. */
@@ -59,6 +66,14 @@ export interface Project { id: string; name: string; }
 export type ScopeType = 'Regional' | 'Project';
 
 export type UserRole = 'National Activity AOP' | 'Regional Coordinator' | 'Project Coordinator';
+
+/**
+ * Shared approval lifecycle, reused by Plan Entry, Quarterly Plan and
+ * Quarterly Actual. Draft/Rejected are freely editable by the Coordinator
+ * who owns the record; Pending Approval is awaiting the National Activity
+ * AOP's decision; Approved is locked — the Coordinator can no longer edit it
+ * (enforced both in the UI and defensively in AppContext).
+ */
 export type ApprovalStatus = 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected';
 
 /** The "how" — who is executing against a National Activity: a Region or a Project. */
@@ -90,6 +105,11 @@ export interface Quarter { id: QuarterId; label: string; }
  * reconciliation badge if the quarters don't sum to the annual figure, so a
  * mismatch is visible rather than silently resolved by shrinking the annual
  * commitment.
+ *
+ * Each quarter's row has its OWN approval_status — a Coordinator submits it,
+ * the National Activity AOP approves or rejects it. Only Approved rows are
+ * counted in the Report page's "Approved" view; editing is blocked entirely
+ * once Approved.
  */
 export interface QuarterlyPlan {
   id: string;
@@ -97,9 +117,18 @@ export interface QuarterlyPlan {
   quarter_id: QuarterId;
   target: number;
   budget: number;
+  approval_status: ApprovalStatus;
+  submitted_at?: string;
+  reviewed_at?: string;
+  rejection_reason?: string;
 }
 
-/** Actual performance reported against a Plan Entry, for one quarter. */
+/**
+ * Actual performance reported against a Plan Entry, for one quarter. Same
+ * per-quarter approval cycle as QuarterlyPlan, tracked independently of it —
+ * a quarter's Plan can be Approved while its Actual is still Draft, and vice
+ * versa.
+ */
 export interface QuarterlyActual {
   id: string;
   plan_entry_id: string;
@@ -107,6 +136,10 @@ export interface QuarterlyActual {
   actual: number;
   expenditure: number; // ETB spent
   comment?: string;
+  approval_status: ApprovalStatus;
+  submitted_at?: string;
+  reviewed_at?: string;
+  rejection_reason?: string;
 }
 
 /** Global conversion table: Actual (in UoM units) x factor = Beneficiaries reached. */

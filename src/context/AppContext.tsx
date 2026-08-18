@@ -1,7 +1,7 @@
 // src/context/AppContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
-  StrategicPriority, NationalActivity, Region, Zone, Project, PlanEntry, Quarter, QuarterlyPlan, QuarterlyActual, UomFactorConfig, FilterState, UserRole,
+  StrategicPriority, NationalActivity, Region, Zone, Project, PlanEntry, Quarter, QuarterId, QuarterlyPlan, QuarterlyActual, UomFactorConfig, FilterState, UserRole,
 } from '../types';
 import {
   INITIAL_STRATEGIC_PRIORITIES, INITIAL_NATIONAL_ACTIVITIES, INITIAL_REGIONS, INITIAL_ZONES, INITIAL_PROJECTS, INITIAL_PLAN_ENTRIES,
@@ -9,6 +9,13 @@ import {
 } from '../data/seedData';
 import { sumTarget, sumBudget } from '../utils/calculations';
 import { buildActivityCode } from '../utils/activityCode';
+
+// What a Coordinator actually supplies when saving a quarter's numbers — the
+// approval lifecycle fields are managed entirely by AppContext (see
+// upsertQuarterlyPlan / submitQuarterlyPlan / approveQuarterlyPlan /
+// rejectQuarterlyPlan below), never set directly by the caller.
+type QuarterlyPlanInput = Omit<QuarterlyPlan, 'approval_status' | 'submitted_at' | 'reviewed_at' | 'rejection_reason'>;
+type QuarterlyActualInput = Omit<QuarterlyActual, 'approval_status' | 'submitted_at' | 'reviewed_at' | 'rejection_reason'>;
 
 interface AppContextType {
   activeRoute: string; setActiveRoute: (r: string) => void;
@@ -51,11 +58,19 @@ interface AppContextType {
   rejectPlanEntry: (id: string, reason?: string) => void;
 
   // Step 2 of the pipeline: Q1–Q4 breakdown of a Plan Entry's annual figure.
+  // Each quarter goes through its own Draft -> Pending Approval ->
+  // Approved/Rejected cycle, same shape as Plan Entry's own workflow.
   quarterlyPlans: QuarterlyPlan[];
-  upsertQuarterlyPlan: (qp: QuarterlyPlan) => void;
+  upsertQuarterlyPlan: (qp: QuarterlyPlanInput) => void;
+  submitQuarterlyPlan: (id: string) => void;
+  approveQuarterlyPlan: (id: string) => void;
+  rejectQuarterlyPlan: (id: string, reason?: string) => void;
 
   quarterlyActuals: QuarterlyActual[];
-  upsertQuarterlyActual: (qa: QuarterlyActual) => void;
+  upsertQuarterlyActual: (qa: QuarterlyActualInput) => void;
+  submitQuarterlyActual: (id: string) => void;
+  approveQuarterlyActual: (id: string) => void;
+  rejectQuarterlyActual: (id: string, reason?: string) => void;
 
   uomConfigs: UomFactorConfig[];
   updateUomFactor: (uom: string, factor: number) => void;
@@ -85,6 +100,16 @@ const migratePlanEntries = (raw: PlanEntry[]): PlanEntry[] => raw.map(pe => {
     approval_status: pe.approval_status || 'Approved',
   };
 });
+
+// Backfills approval_status on Quarterly Plan/Actual rows persisted before
+// this workflow existed. Legacy data predates any approval concept — it was
+// already treated as "live" everywhere it was used, so it's migrated in as
+// Approved rather than suddenly disappearing from the Approved report.
+const migrateQuarterlyPlans = (raw: QuarterlyPlan[]): QuarterlyPlan[] =>
+  raw.map(qp => ({ ...qp, approval_status: qp.approval_status || 'Approved' }));
+
+const migrateQuarterlyActuals = (raw: QuarterlyActual[]): QuarterlyActual[] =>
+  raw.map(qa => ({ ...qa, approval_status: qa.approval_status || 'Approved' }));
 
 const readPersisted = <T,>(key: string, fallback: T): T => {
   if (typeof window === 'undefined') return fallback;
@@ -117,8 +142,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [projects] = useState<Project[]>(INITIAL_PROJECTS);
   const [quarters] = useState<Quarter[]>(FISCAL_QUARTERS);
   const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => migratePlanEntries(readPersisted('planEntries', INITIAL_PLAN_ENTRIES)));
-  const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>(() => readPersisted('quarterlyPlans', INITIAL_QUARTERLY_PLANS));
-  const [quarterlyActuals, setQuarterlyActuals] = useState<QuarterlyActual[]>(() => readPersisted('quarterlyActuals', INITIAL_QUARTERLY_ACTUALS));
+  const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>(() => migrateQuarterlyPlans(readPersisted('quarterlyPlans', INITIAL_QUARTERLY_PLANS)));
+  const [quarterlyActuals, setQuarterlyActuals] = useState<QuarterlyActual[]>(() => migrateQuarterlyActuals(readPersisted('quarterlyActuals', INITIAL_QUARTERLY_ACTUALS)));
   const [uomConfigs, setUomConfigs] = useState<UomFactorConfig[]>(() => readPersisted('uomConfigs', INITIAL_UOM_CONFIGS));
   const [filters, setFilters] = useState<FilterState>(() => ({ ...DEFAULT_FILTERS, ...readPersisted('filters', DEFAULT_FILTERS) }));
   const [reportApprovalStatus, setReportApprovalStatus] = useState<'ALL' | 'Approved' | 'Draft'>(() => readPersisted('reportApprovalStatus', 'Approved'));
@@ -326,27 +351,117 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Plan entry rejected. It remains in Draft reports for review.');
   };
 
-  // Stores one quarter's planned target/budget for a Plan Entry. Deliberately
-  // does NOT write back to the Plan Entry's own annual_target/annual_budget —
-  // see the QuarterlyPlan type comment for why. The Quarterly Plan page reads
-  // this directly alongside the Plan Entry's annual figure to show whether
-  // they reconcile.
-  const upsertQuarterlyPlan = (qp: QuarterlyPlan) => {
+  // ---------------------------------------------------------------------
+  // QUARTERLY PLAN — each quarter of a Plan Entry has its own approval
+  // lifecycle, independent of the Plan Entry's own approval_status and of
+  // every other quarter. upsert is what the Quarterly Plan page's number
+  // inputs call on every keystroke: it creates/updates the quarter's
+  // target/budget and (re)sets it to Draft — including snapping a
+  // previously Pending or Rejected quarter back to Draft, so the AOP can
+  // never approve a value that has since changed without seeing it first.
+  // Once a quarter is Approved, upsert refuses to touch it at all — this is
+  // the actual enforcement point; the UI additionally disables the inputs
+  // so a Coordinator never gets this toast in normal use.
+  // ---------------------------------------------------------------------
+  const upsertQuarterlyPlan = (qp: QuarterlyPlanInput) => {
     if (currentRole === 'National Activity AOP') { showToast('Quarterly Plan entries are created by Regional and Project Coordinators.'); return; }
+    const existing = quarterlyPlans.find(x => x.plan_entry_id === qp.plan_entry_id && x.quarter_id === qp.quarter_id);
+    if (existing?.approval_status === 'Approved') {
+      showToast(`${qp.quarter_id} Quarterly Plan is already approved and locked. It can no longer be edited.`);
+      return;
+    }
     setQuarterlyPlans(prev => {
       const idx = prev.findIndex(x => x.plan_entry_id === qp.plan_entry_id && x.quarter_id === qp.quarter_id);
-      if (idx >= 0) { const copy = [...prev]; copy[idx] = qp; return copy; }
-      return [...prev, qp];
+      const merged: QuarterlyPlan = { ...qp, approval_status: 'Draft', submitted_at: undefined, reviewed_at: undefined, rejection_reason: undefined };
+      if (idx >= 0) { const copy = [...prev]; copy[idx] = merged; return copy; }
+      return [...prev, merged];
     });
   };
 
-  const upsertQuarterlyActual = (qa: QuarterlyActual) => {
+  const submitQuarterlyPlan = (id: string) => {
+    if (currentRole === 'National Activity AOP') { showToast('National Activity AOP approves or rejects Quarterly Plan submissions; Coordinators submit them.'); return; }
+    const qp = quarterlyPlans.find(x => x.id === id);
+    if (!qp) { showToast('Quarterly Plan entry not found.'); return; }
+    if (qp.approval_status === 'Approved') { showToast(`${qp.quarter_id} Quarterly Plan is already approved.`); return; }
+    setQuarterlyPlans(prev => prev.map(x => x.id === id
+      ? { ...x, approval_status: 'Pending Approval', submitted_at: new Date().toISOString(), rejection_reason: undefined }
+      : x
+    ));
+    showToast(`${qp.quarter_id} Quarterly Plan submitted to the National Activity AOP for approval.`);
+  };
+
+  const approveQuarterlyPlan = (id: string) => {
+    if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can approve Quarterly Plan submissions.'); return; }
+    const qp = quarterlyPlans.find(x => x.id === id);
+    if (!qp) { showToast('Quarterly Plan entry not found.'); return; }
+    setQuarterlyPlans(prev => prev.map(x => x.id === id
+      ? { ...x, approval_status: 'Approved', reviewed_at: new Date().toISOString(), rejection_reason: undefined }
+      : x
+    ));
+    showToast(`${qp.quarter_id} Quarterly Plan approved and locked. It is now included in the live approved report.`);
+  };
+
+  const rejectQuarterlyPlan = (id: string, reason = 'Rejected by National Activity AOP.') => {
+    if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can reject Quarterly Plan submissions.'); return; }
+    const qp = quarterlyPlans.find(x => x.id === id);
+    setQuarterlyPlans(prev => prev.map(x => x.id === id
+      ? { ...x, approval_status: 'Rejected', reviewed_at: new Date().toISOString(), rejection_reason: reason }
+      : x
+    ));
+    showToast(`${qp?.quarter_id || ''} Quarterly Plan rejected. It remains editable for revision and resubmission.`.trim());
+  };
+
+  // ---------------------------------------------------------------------
+  // QUARTERLY ACTUAL — same per-quarter approval lifecycle as Quarterly
+  // Plan above, tracked completely independently (a quarter's Actual can be
+  // Approved while its Plan is still Pending, or vice versa).
+  // ---------------------------------------------------------------------
+  const upsertQuarterlyActual = (qa: QuarterlyActualInput) => {
     if (currentRole === 'National Activity AOP') { showToast('Quarterly Actual entries are created by Regional and Project Coordinators.'); return; }
+    const existing = quarterlyActuals.find(a => a.plan_entry_id === qa.plan_entry_id && a.quarter_id === qa.quarter_id);
+    if (existing?.approval_status === 'Approved') {
+      showToast(`${qa.quarter_id} Quarterly Actual is already approved and locked. It can no longer be edited.`);
+      return;
+    }
     setQuarterlyActuals(prev => {
       const idx = prev.findIndex(a => a.plan_entry_id === qa.plan_entry_id && a.quarter_id === qa.quarter_id);
-      if (idx >= 0) { const copy = [...prev]; copy[idx] = qa; return copy; }
-      return [...prev, qa];
+      const merged: QuarterlyActual = { ...qa, approval_status: 'Draft', submitted_at: undefined, reviewed_at: undefined, rejection_reason: undefined };
+      if (idx >= 0) { const copy = [...prev]; copy[idx] = merged; return copy; }
+      return [...prev, merged];
     });
+  };
+
+  const submitQuarterlyActual = (id: string) => {
+    if (currentRole === 'National Activity AOP') { showToast('National Activity AOP approves or rejects Quarterly Actual submissions; Coordinators submit them.'); return; }
+    const qa = quarterlyActuals.find(x => x.id === id);
+    if (!qa) { showToast('Quarterly Actual entry not found.'); return; }
+    if (qa.approval_status === 'Approved') { showToast(`${qa.quarter_id} Quarterly Actual is already approved.`); return; }
+    setQuarterlyActuals(prev => prev.map(x => x.id === id
+      ? { ...x, approval_status: 'Pending Approval', submitted_at: new Date().toISOString(), rejection_reason: undefined }
+      : x
+    ));
+    showToast(`${qa.quarter_id} Quarterly Actual submitted to the National Activity AOP for approval.`);
+  };
+
+  const approveQuarterlyActual = (id: string) => {
+    if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can approve Quarterly Actual submissions.'); return; }
+    const qa = quarterlyActuals.find(x => x.id === id);
+    if (!qa) { showToast('Quarterly Actual entry not found.'); return; }
+    setQuarterlyActuals(prev => prev.map(x => x.id === id
+      ? { ...x, approval_status: 'Approved', reviewed_at: new Date().toISOString(), rejection_reason: undefined }
+      : x
+    ));
+    showToast(`${qa.quarter_id} Quarterly Actual approved and locked. It is now included in the live approved report.`);
+  };
+
+  const rejectQuarterlyActual = (id: string, reason = 'Rejected by National Activity AOP.') => {
+    if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can reject Quarterly Actual submissions.'); return; }
+    const qa = quarterlyActuals.find(x => x.id === id);
+    setQuarterlyActuals(prev => prev.map(x => x.id === id
+      ? { ...x, approval_status: 'Rejected', reviewed_at: new Date().toISOString(), rejection_reason: reason }
+      : x
+    ));
+    showToast(`${qa?.quarter_id || ''} Quarterly Actual rejected. It remains editable for revision and resubmission.`.trim());
   };
 
   const updateUomFactor = (uom: string, factor: number) => {
@@ -369,8 +484,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       zones, addZone,
       projects, quarters,
       planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry, submitPlanEntry, approvePlanEntry, rejectPlanEntry,
-      quarterlyPlans, upsertQuarterlyPlan,
-      quarterlyActuals, upsertQuarterlyActual,
+      quarterlyPlans, upsertQuarterlyPlan, submitQuarterlyPlan, approveQuarterlyPlan, rejectQuarterlyPlan,
+      quarterlyActuals, upsertQuarterlyActual, submitQuarterlyActual, approveQuarterlyActual, rejectQuarterlyActual,
       uomConfigs, updateUomFactor,
       filters, setFilters, resetFilters, reportApprovalStatus, setReportApprovalStatus, getFilteredPlanEntries,
     }}>

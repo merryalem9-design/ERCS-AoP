@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
+import { ApprovalStatusBadge } from '../components/common/ApprovalStatusBadge';
 import { sumTarget, sumBudget } from '../utils/calculations';
 import { buildActivityCode } from '../utils/activityCode';
 import { NationalActivity, PlanEntry, ScopeType, Region, Zone, Responsibility } from '../types';
@@ -334,7 +335,7 @@ export const PlanPage: React.FC = () => {
                   </td>
                   <td className="p-3 text-right font-bold">{pe.annual_target.toLocaleString()} {na?.uom}</td>
                   <td className="p-3 text-right">{pe.annual_budget.toLocaleString()}</td>
-                  <td className="p-3 text-center"><ApprovalBadge status={pe.approval_status} /></td>
+                  <td className="p-3 text-center"><ApprovalStatusBadge status={pe.approval_status} /></td>
                   <td className="p-3">
                     <div className="flex items-center justify-center gap-2 flex-wrap">
                       {currentRole !== 'National Activity AOP' && <button onClick={() => openEditPlanWizard(pe)} className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-bold">Edit</button>}
@@ -382,42 +383,17 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
   const [addingZone, setAddingZone] = useState(false);
   const [newZoneName, setNewZoneName] = useState('');
 
-  // Guards against a fast double-click firing onSave() twice before this
-  // modal unmounts, which would otherwise create two near-identical
-  // National Activities. useRef (not useState) because refs update
-  // synchronously — a useState flag can still read stale on the second
-  // click if it fires before React re-renders.
   const savingRef = useRef(false);
 
   const zonesInScope = form.region_id ? zones.filter(z => z.region_id === form.region_id) : [];
 
-  // Once this National Activity has linked Plan Entries, Target/Budget are
-  // used for live reconciliation against the fixed National Activity ceiling
-  // and shown read-only here — editing them directly would just be silently
-  // overwritten the next time a Plan Entry changes, which is confusing.
   const linkedChildren = form.id ? planEntries.filter(pe => pe.national_activity_id === form.id) : [];
   const hasChildren = linkedChildren.length > 0;
   const computedTarget = sumTarget(linkedChildren);
   const computedBudget = sumBudget(linkedChildren);
-  // FIX: this used to be displayed under the "Annual Target/Budget Ceiling"
-  // labels below — but computedTarget/computedBudget are the CURRENT
-  // ALLOCATION (sum of linked children), not the actual fixed ceiling
-  // stored on the National Activity. Whenever children hadn't yet
-  // reconciled exactly to the ceiling (which the Plan page explicitly
-  // allows and flags with amber "Target/Budget sum ≠ official" badges),
-  // this modal was silently showing the wrong number under a label that
-  // implied it was the hard limit. ceilingTarget/ceilingBudget below are
-  // the REAL, unmodified na.annual_target/annual_budget — form.annual_target
-  // never changes while hasChildren is true, since the input is hidden.
   const ceilingTarget = Number(form.annual_target || 0);
   const ceilingBudget = Number(form.annual_budget || 0);
 
-  // "Other" UoM support: selecting OTHER_UOM in the dropdown reveals a
-  // Name + Value pair instead of picking straight from the existing
-  // Conversion Factors list. These stay local to this modal until Save
-  // resolves them into a real uom string (see PlanPage's saveNa) — Person /
-  // House Hold (HH), and any UoM created this way before, are never
-  // touched by this path.
   const isOtherUom = form.uom === OTHER_UOM;
   const customUomNameTrimmed = (form.customUomName || '').trim();
   const customUomValueRaw = form.customUomValue;
@@ -425,9 +401,6 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
   const otherUomMissingName = isOtherUom && !customUomNameTrimmed;
   const otherUomInvalidValue = isOtherUom && customUomValueRaw !== undefined && customUomValueRaw !== '' && (Number.isNaN(customUomValueNum) || customUomValueNum < 0);
 
-  // Required-field + non-negative-number guards. Manual Target/Budget
-  // accepted negative numbers (min="0" on <input> is only a UI hint, not an
-  // enforced constraint), which would corrupt every downstream aggregate.
   const requiredMissing =
     !(form.code || '').trim() ||
     !(form.description || '').trim() ||
@@ -446,17 +419,11 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
       (manualBudgetRaw !== undefined && manualBudgetRaw !== ('' as any) && (Number.isNaN(manualBudgetNum) || manualBudgetNum < 0))
     );
 
-  // Two National Activities sharing the same code would be indistinguishable
-  // in every Report table and filter dropdown (both are labeled by code, not
-  // id) — this catches that before it can happen.
   const codeTrimmed = (form.code || '').trim();
   const duplicateCode = codeTrimmed.length > 0 && nationalActivities.some(
     other => other.id !== form.id && other.code.trim().toLowerCase() === codeTrimmed.toLowerCase()
   );
 
-  // A new "Other" UoM whose name matches one already in the Conversion
-  // Factors list (case-insensitive) — including Person / House Hold (HH) —
-  // should be picked from the dropdown instead of re-created here.
   const otherUomDuplicate = isOtherUom && customUomNameTrimmed.length > 0 && uomConfigs.some(
     cfg => cfg.uom.trim().toLowerCase() === customUomNameTrimmed.toLowerCase()
   );
@@ -514,10 +481,6 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
             onChange={e => {
               const value = e.target.value;
               if (value === OTHER_UOM) {
-                // Default the new unit's conversion factor to 1 — often
-                // it's just the name/description that differs (e.g.
-                // "# of Agreements" vs "# of Boats"), not the beneficiary
-                // math.
                 setForm((f: any) => ({ ...f, uom: value, customUomValue: f.customUomValue ?? '1' }));
               } else {
                 setForm((f: any) => ({ ...f, uom: value }));
@@ -591,7 +554,6 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
           </>
         )}
 
-        {/* Region */}
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="block text-[10px] font-bold text-slate-500">Region</span>
@@ -618,7 +580,6 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
           )}
         </div>
 
-        {/* Zone */}
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="block text-[10px] font-bold text-slate-500">Zone</span>
@@ -695,13 +656,6 @@ const NationalActivityModal: React.FC<{ form: NationalActivityFormState; setForm
   );
 };
 
-// ---------------------------------------------------------------------------
-// ADD PLAN WIZARD
-// Step 1 makes the parent link explicit: Strategic Priority -> National
-// Activity, with a live breadcrumb preview and current linked-entry count.
-// Step 2 captures execution details and previews exactly what the National
-// Activity's official Target/Budget will become once saved.
-// ---------------------------------------------------------------------------
 const PlanEntryWizardModal: React.FC<{
   initial: PeWizardFormState;
   startStep: 1 | 2;
@@ -712,10 +666,6 @@ const PlanEntryWizardModal: React.FC<{
   const [step, setStep] = useState<1 | 2>(startStep);
   const [form, setForm] = useState<PeWizardFormState>(initial);
 
-  // Same double-submit guard as the National Activity modal, and for the
-  // same reason: a fast double-click here would create two Plan Entries for
-  // the same Region/Project, silently double-counting that contribution in
-  // the parent National Activity's synced Target/Budget.
   const savingRef = useRef(false);
 
   const isEditing = !!form.id;
@@ -729,8 +679,6 @@ const PlanEntryWizardModal: React.FC<{
   const selectedNa = nationalActivities.find(na => na.id === form.national_activity_id);
   const spOfSelectedNa = selectedNa ? strategicPriorities.find(sp => sp.id === selectedNa.strategic_priority_id) : undefined;
 
-  // Every OTHER entry already linked to this National Activity (excluding
-  // the one being edited), used to preview the projected parent totals.
   const siblingEntries = selectedNa ? planEntries.filter(pe => pe.national_activity_id === selectedNa.id && pe.id !== form.id) : [];
   const siblingTarget = sumTarget(siblingEntries);
   const siblingBudget = sumBudget(siblingEntries);
@@ -739,9 +687,6 @@ const PlanEntryWizardModal: React.FC<{
   const projectedTarget = siblingTarget + thisTarget;
   const projectedBudget = siblingBudget + thisBudget;
 
-  // The National Activity's annual Target/Budget are hard ceilings.
-  // Existing sibling entries consume part of that ceiling, so this entry can
-  // only use the remaining amount.
   const targetLimit = selectedNa?.annual_target ?? 0;
   const budgetLimit = selectedNa?.annual_budget ?? 0;
   const remainingTarget = Math.max(0, targetLimit - siblingTarget);
@@ -749,11 +694,8 @@ const PlanEntryWizardModal: React.FC<{
   const targetExceeded = projectedTarget > targetLimit;
   const budgetExceeded = projectedBudget > budgetLimit;
 
-  // Guard 1: Annual Target / Annual Budget must be zero or greater.
   const numbersValid = thisTarget >= 0 && thisBudget >= 0 && !targetExceeded && !budgetExceeded;
 
-  // Guard 2: prevent two Plan Entries linking the same Region/Project to the
-  // same National Activity (would double-count that contribution everywhere).
   const isDuplicateLink = !!selectedNa && !!form.scope_type && planEntries.some(pe =>
     pe.id !== form.id &&
     pe.national_activity_id === selectedNa.id &&
@@ -990,16 +932,6 @@ const PlanEntryWizardModal: React.FC<{
   );
 };
 
-const ApprovalBadge: React.FC<{ status: PlanEntry['approval_status'] }> = ({ status }) => {
-  const styles = {
-    'Draft': 'bg-slate-100 text-slate-700 border-slate-300',
-    'Pending Approval': 'bg-amber-100 text-amber-800 border-amber-300',
-    'Approved': 'bg-emerald-100 text-emerald-800 border-emerald-300',
-    'Rejected': 'bg-rose-100 text-rose-800 border-rose-300',
-  } as const;
-  return <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${styles[status]}`}>{status}</span>;
-};
-
 const SubmitButton: React.FC<{ planEntryId: string }> = ({ planEntryId }) => {
   const { submitPlanEntry } = useApp();
   return <button onClick={() => submitPlanEntry(planEntryId)} className="px-2.5 py-1 rounded bg-amber-50 text-amber-800 font-bold">Submit</button>;
@@ -1019,11 +951,6 @@ const LabeledInput: React.FC<{ label: string; value: string; onChange: (v: strin
   </label>
 );
 
-// Person and House Hold (HH) are display-only — their conversion factor is
-// locked and is rendered exactly as before. Any other UoM, including ones
-// created via "Other" on the National Activity form, gets a real input so
-// its factor can be tuned after the fact, without touching Person/HH logic
-// at all.
 const UomFactorCard: React.FC<{ uom: string; factor: number }> = ({ uom, factor }) => {
   const { updateUomFactor } = useApp();
   const locked = LOCKED_UOMS.has(uom);

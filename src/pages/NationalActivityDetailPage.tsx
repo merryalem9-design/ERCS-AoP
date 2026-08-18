@@ -34,6 +34,13 @@ export const NationalActivityDetailPage: React.FC = () => {
   // national_activity_id. Every figure below is derived fresh from this list
   // and quarterlyActuals — so the moment a Plan Entry or Actual changes
   // anywhere in the app, these numbers update on next render, live.
+  //
+  // NOTE: this page is the Coordinator/AOP's live working view of a National
+  // Activity, so — unlike the Report page — every figure here includes ALL
+  // entered Quarterly Plan/Actual data regardless of its individual approval
+  // status. Only the Report page's "Approved" view is gated to Approved-only
+  // quarters; use the counts on each Plan Entry card below to see how much
+  // of that data has actually cleared approval.
   const children = planEntries.filter(pe => pe.national_activity_id === na.id);
   const regionalChildren = children.filter(c => c.scope_type === 'Regional');
   const projectChildren = children.filter(c => c.scope_type === 'Project');
@@ -78,6 +85,13 @@ export const NationalActivityDetailPage: React.FC = () => {
     setFilters(prev => ({ ...prev, nationalActivityId: na.id, regionId: 'ALL', projectId: 'ALL' }));
     setActiveRoute('quarterly-plan');
   };
+
+  // How many of a Plan Entry's (up to 4) quarters have an Approved
+  // Quarterly Plan / Quarterly Actual — shown on each linked-entry card so
+  // Coordinators and the AOP can see approval progress without leaving this
+  // page.
+  const approvedPlanQuarters = (peId: string) => quarterlyPlans.filter(qp => qp.plan_entry_id === peId && qp.approval_status === 'Approved').length;
+  const approvedActualQuarters = (peId: string) => quarterlyActuals.filter(qa => qa.plan_entry_id === peId && qa.approval_status === 'Approved').length;
 
   return (
     <div className="space-y-6">
@@ -181,7 +195,12 @@ export const NationalActivityDetailPage: React.FC = () => {
             </tbody>
           </table>
         </div>
-        <p className="text-[10px] text-slate-400">Planned figures come from the Quarterly Plan page. A planned value of 0 means no quarterly plan has been set yet for that quarter.</p>
+        <p className="text-[10px] text-slate-400">
+          Planned figures come from the Quarterly Plan page. A planned value of 0 means no quarterly plan has been set
+          yet for that quarter. Figures on this page include ALL entered data regardless of its own approval status —
+          the Report page's Approved view only counts Quarterly Plan/Actual rows that have themselves been approved;
+          see the approval counts on each linked entry below.
+        </p>
       </div>
 
       <div className="bg-white p-6 rounded-xl border shadow-sm space-y-6">
@@ -203,7 +222,13 @@ export const NationalActivityDetailPage: React.FC = () => {
                     onClick={() => goToChild(pe)}
                     className="w-full bg-white p-3 rounded-lg border shadow-sm flex justify-between text-xs text-left hover:border-ercs-red transition-colors"
                   >
-                    <div><div className="font-bold">{reg?.name || '—'}</div><div className="text-[10px] text-slate-500">{pe.activity_code || na.code}</div><div className="text-[10px] text-slate-600 font-semibold mt-0.5">{pe.activity_name}</div><div className="text-[9px] text-slate-400 mt-0.5 line-clamp-2">{pe.activity_description}</div></div>
+                    <div>
+                      <div className="font-bold">{reg?.name || '—'}</div>
+                      <div className="text-[10px] text-slate-500">{pe.activity_code || na.code}</div>
+                      <div className="text-[10px] text-slate-600 font-semibold mt-0.5">{pe.activity_name}</div>
+                      <div className="text-[9px] text-slate-400 mt-0.5 line-clamp-2">{pe.activity_description}</div>
+                      <div className="text-[9px] text-slate-400 mt-1">Qtrly Plan Approved: {approvedPlanQuarters(pe.id)}/4 · Qtrly Actual Approved: {approvedActualQuarters(pe.id)}/4</div>
+                    </div>
                     <div className="text-right font-extrabold">{cAct.toLocaleString()} / {pe.annual_target.toLocaleString()}</div>
                   </button>
                 );
@@ -226,7 +251,13 @@ export const NationalActivityDetailPage: React.FC = () => {
                     onClick={() => goToChild(pe)}
                     className="w-full bg-white p-3 rounded-lg border shadow-sm flex justify-between text-xs text-left hover:border-blue-500 transition-colors"
                   >
-                    <div><div className="font-bold text-blue-800">{prj?.name || '—'}</div><div className="text-[10px] text-slate-500">{pe.activity_code || na.code}</div><div className="text-[10px] text-slate-600 font-semibold mt-0.5">{pe.activity_name}</div><div className="text-[9px] text-slate-400 mt-0.5 line-clamp-2">{pe.activity_description}</div></div>
+                    <div>
+                      <div className="font-bold text-blue-800">{prj?.name || '—'}</div>
+                      <div className="text-[10px] text-slate-500">{pe.activity_code || na.code}</div>
+                      <div className="text-[10px] text-slate-600 font-semibold mt-0.5">{pe.activity_name}</div>
+                      <div className="text-[9px] text-slate-400 mt-0.5 line-clamp-2">{pe.activity_description}</div>
+                      <div className="text-[9px] text-slate-400 mt-1">Qtrly Plan Approved: {approvedPlanQuarters(pe.id)}/4 · Qtrly Actual Approved: {approvedActualQuarters(pe.id)}/4</div>
+                    </div>
                     <div className="text-right font-extrabold">{cAct.toLocaleString()} / {pe.annual_target.toLocaleString()}</div>
                   </button>
                 );

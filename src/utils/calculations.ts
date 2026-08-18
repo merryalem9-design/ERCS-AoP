@@ -1,5 +1,5 @@
 // src/utils/calculations.ts
-import { PlanEntry, QuarterlyActual, QuarterlyPlan, UomFactorConfig } from '../types';
+import { ApprovalStatus, PlanEntry, QuarterlyActual, QuarterlyPlan, UomFactorConfig } from '../types';
 
 /** Sum of annual targets across a set of Plan Entries. */
 export const sumTarget = (entries: PlanEntry[]): number =>
@@ -12,6 +12,8 @@ export const sumBudget = (entries: PlanEntry[]): number =>
 /**
  * Sum of quarterly actuals reported against the given Plan Entries.
  * quarterId === 'ALL' (or undefined) sums every quarter reported so far.
+ * Pass an already status-filtered `actuals` array (see filterByApprovalStatus)
+ * when this needs to reflect only Approved (or only non-Approved) figures.
  */
 export const sumActual = (
   entries: PlanEntry[],
@@ -47,10 +49,8 @@ export const sumExpenditure = (
  *   these entries (0 for any entry with no Quarterly Plan set for that
  *   quarter yet — callers surface that separately as a "missing plan" notice
  *   rather than letting it silently read as "planned to reach zero").
- * This is what lets Quarterly Actual Entry and the Report page compare an
- * actual against the RIGHT plan: the quarter's plan when quarter-filtered,
- * the annual plan otherwise — instead of always dividing by the full-year
- * target regardless of which quarter is in view.
+ * Pass an already status-filtered `quarterlyPlans` array when this needs to
+ * reflect only Approved (or only non-Approved) quarters.
  */
 export const sumPlannedTarget = (
   entries: PlanEntry[],
@@ -97,6 +97,26 @@ export const convertToBeneficiaries = (
   const config = uomConfigs.find(c => c.uom.toLowerCase() === uom.toLowerCase());
   return actual * (config ? config.factor : 0);
 };
+
+/**
+ * Shared "is this row part of the Approved report, or the Draft one?" test.
+ * Reused for Plan Entries, Quarterly Plans and Quarterly Actuals so all
+ * three levels of the approval workflow are filtered identically:
+ * - 'ALL': everything, regardless of status.
+ * - 'Approved': only rows that are themselves Approved.
+ * - 'Draft': everything NOT (yet) Approved — Draft, Pending Approval or Rejected.
+ */
+export const filterByApprovalStatus = <T extends { approval_status: ApprovalStatus }>(
+  items: T[],
+  reportStatus: 'ALL' | 'Approved' | 'Draft'
+): T[] =>
+  items.filter(item =>
+    reportStatus === 'ALL'
+      ? true
+      : reportStatus === 'Approved'
+        ? item.approval_status === 'Approved'
+        : item.approval_status !== 'Approved'
+  );
 
 /**
  * Achievement status — tracks physical progress (Actual vs Target).

@@ -80,8 +80,8 @@ export const INITIAL_PLAN_ENTRIES: PlanEntry[] = [
   { id: 'pe-113-2', national_activity_id: 'na-1-1-3', scope_type: 'Project', project_id: 'proj-5', annual_target: 100, annual_budget: 1_000_000, activity_code: 'Activity 1.1.3_EAP', activity_name: 'EAP', activity_description: 'Develop Early Action Protocols (EAP) for Flood & Drought', approval_status: 'Approved' },
 
   // Activity 1.1.8
-  { id: 'pe-118-1', national_activity_id: 'na-1-1-8', scope_type: 'Project', project_id: 'proj-1', annual_target: 1, annual_budget: 350_000, activity_code: 'Activity 1.1.8_HNS_HQ', activity_name: 'HNS HQ', activity_description: 'Training of Trainers (ToT) workshop for BDRT roll-out', approval_status: 'Approved' },
-  { id: 'pe-118-2', national_activity_id: 'na-1-1-8', scope_type: 'Project', project_id: 'proj-2', annual_target: 1, annual_budget: 430_000, activity_code: 'Activity 1.1.8_FbF_HQ', activity_name: 'FbF HQ', activity_description: 'Provide simulation exercises and coordination manuals', approval_status: 'Approved' },
+  { id: 'pe-118-1', national_activity_id: 'na-1-1-8', scope_type: 'Project', project_id: 'proj-4', annual_target: 1, annual_budget: 350_000, activity_code: 'Activity 1.1.8_HNS_HQ', activity_name: 'HNS HQ', activity_description: 'Training of Trainers (ToT) workshop for BDRT roll-out', approval_status: 'Approved' },
+  { id: 'pe-118-2', national_activity_id: 'na-1-1-8', scope_type: 'Project', project_id: 'proj-5', annual_target: 1, annual_budget: 430_000, activity_code: 'Activity 1.1.8_FbF_HQ', activity_name: 'FbF HQ', activity_description: 'Provide simulation exercises and coordination manuals', approval_status: 'Approved' },
   { id: 'pe-118-3', national_activity_id: 'na-1-1-8', scope_type: 'Regional', region_id: 'reg-1', annual_target: 35, annual_budget: 1_000_000, activity_code: 'Activity 1.1.8_Amhara', activity_name: 'Amhara', activity_description: 'Provide BDRT training and establish the team at Amhara branch', approval_status: 'Approved' },
   { id: 'pe-118-4', national_activity_id: 'na-1-1-8', scope_type: 'Regional', region_id: 'reg-2', annual_target: 40, annual_budget: 1_000_000, activity_code: 'Activity 1.1.8_Oromia', activity_name: 'Oromia', activity_description: 'Provide BDRT training and establish the team in Oromia branch', approval_status: 'Approved' },
   { id: 'pe-118-5', national_activity_id: 'na-1-1-8', scope_type: 'Regional', region_id: 'reg-3', annual_target: 30, annual_budget: 800_000, activity_code: 'Activity 1.1.8_Tigray', activity_name: 'Tigray', activity_description: 'Provide BDRT training and establish the team in Tigray branch', approval_status: 'Approved' },
@@ -99,74 +99,73 @@ export const FISCAL_QUARTERS: Quarter[] = [
   { id: 'Q4', label: 'Q4 (Apr-Jun)' },
 ];
 
-// FIX: this export was missing entirely — AppContext.tsx imports
-// INITIAL_QUARTERLY_PLANS, but seedData.ts never declared it, which is the
-// exact "has no exported member" TS error. That left `quarterlyPlans` seeded
-// from `undefined` on first load, so every Plan Entry showed "no Quarterly
-// Plan set" with everything reading 0.
-//
 // Each entry's four quarters sum exactly to that Plan Entry's own
 // annual_target / annual_budget (same reconciled-on-first-load convention
 // used by INITIAL_PLAN_ENTRIES above), so the Quarterly Plan page, the
 // National Activity Detail page and Quarterly Actual Entry all show correct,
 // reconciled figures immediately — and update live from there as normal.
+//
+// All seeded here as already 'Approved' — this is demo/starter data meant to
+// show a fully reconciled, fully live Approved report on first load. Any NEW
+// quarter a Coordinator enters from here on goes through the real
+// Draft -> Pending Approval -> Approved/Rejected cycle.
 export const INITIAL_QUARTERLY_PLANS: QuarterlyPlan[] = [
   // Activity 1.1.3
-  { id: 'qp-pe-113-1-Q1', plan_entry_id: 'pe-113-1', quarter_id: 'Q1', target: 25, budget: 200_000 },
-  { id: 'qp-pe-113-1-Q2', plan_entry_id: 'pe-113-1', quarter_id: 'Q2', target: 25, budget: 200_000 },
-  { id: 'qp-pe-113-1-Q3', plan_entry_id: 'pe-113-1', quarter_id: 'Q3', target: 25, budget: 200_000 },
-  { id: 'qp-pe-113-1-Q4', plan_entry_id: 'pe-113-1', quarter_id: 'Q4', target: 25, budget: 200_000 },
+  { id: 'qp-pe-113-1-Q1', plan_entry_id: 'pe-113-1', quarter_id: 'Q1', target: 25, budget: 200_000, approval_status: 'Approved' },
+  { id: 'qp-pe-113-1-Q2', plan_entry_id: 'pe-113-1', quarter_id: 'Q2', target: 25, budget: 200_000, approval_status: 'Approved' },
+  { id: 'qp-pe-113-1-Q3', plan_entry_id: 'pe-113-1', quarter_id: 'Q3', target: 25, budget: 200_000, approval_status: 'Approved' },
+  { id: 'qp-pe-113-1-Q4', plan_entry_id: 'pe-113-1', quarter_id: 'Q4', target: 25, budget: 200_000, approval_status: 'Approved' },
 
-  { id: 'qp-pe-113-2-Q1', plan_entry_id: 'pe-113-2', quarter_id: 'Q1', target: 25, budget: 250_000 },
-  { id: 'qp-pe-113-2-Q2', plan_entry_id: 'pe-113-2', quarter_id: 'Q2', target: 25, budget: 250_000 },
-  { id: 'qp-pe-113-2-Q3', plan_entry_id: 'pe-113-2', quarter_id: 'Q3', target: 25, budget: 250_000 },
-  { id: 'qp-pe-113-2-Q4', plan_entry_id: 'pe-113-2', quarter_id: 'Q4', target: 25, budget: 250_000 },
+  { id: 'qp-pe-113-2-Q1', plan_entry_id: 'pe-113-2', quarter_id: 'Q1', target: 25, budget: 250_000, approval_status: 'Approved' },
+  { id: 'qp-pe-113-2-Q2', plan_entry_id: 'pe-113-2', quarter_id: 'Q2', target: 25, budget: 250_000, approval_status: 'Approved' },
+  { id: 'qp-pe-113-2-Q3', plan_entry_id: 'pe-113-2', quarter_id: 'Q3', target: 25, budget: 250_000, approval_status: 'Approved' },
+  { id: 'qp-pe-113-2-Q4', plan_entry_id: 'pe-113-2', quarter_id: 'Q4', target: 25, budget: 250_000, approval_status: 'Approved' },
 
   // Activity 1.1.8
-  { id: 'qp-pe-118-1-Q1', plan_entry_id: 'pe-118-1', quarter_id: 'Q1', target: 0, budget: 87_500 },
-  { id: 'qp-pe-118-1-Q2', plan_entry_id: 'pe-118-1', quarter_id: 'Q2', target: 0, budget: 87_500 },
-  { id: 'qp-pe-118-1-Q3', plan_entry_id: 'pe-118-1', quarter_id: 'Q3', target: 0, budget: 87_500 },
-  { id: 'qp-pe-118-1-Q4', plan_entry_id: 'pe-118-1', quarter_id: 'Q4', target: 1, budget: 87_500 },
+  { id: 'qp-pe-118-1-Q1', plan_entry_id: 'pe-118-1', quarter_id: 'Q1', target: 0, budget: 87_500, approval_status: 'Approved' },
+  { id: 'qp-pe-118-1-Q2', plan_entry_id: 'pe-118-1', quarter_id: 'Q2', target: 0, budget: 87_500, approval_status: 'Approved' },
+  { id: 'qp-pe-118-1-Q3', plan_entry_id: 'pe-118-1', quarter_id: 'Q3', target: 0, budget: 87_500, approval_status: 'Approved' },
+  { id: 'qp-pe-118-1-Q4', plan_entry_id: 'pe-118-1', quarter_id: 'Q4', target: 1, budget: 87_500, approval_status: 'Approved' },
 
-  { id: 'qp-pe-118-2-Q1', plan_entry_id: 'pe-118-2', quarter_id: 'Q1', target: 0, budget: 107_500 },
-  { id: 'qp-pe-118-2-Q2', plan_entry_id: 'pe-118-2', quarter_id: 'Q2', target: 0, budget: 107_500 },
-  { id: 'qp-pe-118-2-Q3', plan_entry_id: 'pe-118-2', quarter_id: 'Q3', target: 0, budget: 107_500 },
-  { id: 'qp-pe-118-2-Q4', plan_entry_id: 'pe-118-2', quarter_id: 'Q4', target: 1, budget: 107_500 },
+  { id: 'qp-pe-118-2-Q1', plan_entry_id: 'pe-118-2', quarter_id: 'Q1', target: 0, budget: 107_500, approval_status: 'Approved' },
+  { id: 'qp-pe-118-2-Q2', plan_entry_id: 'pe-118-2', quarter_id: 'Q2', target: 0, budget: 107_500, approval_status: 'Approved' },
+  { id: 'qp-pe-118-2-Q3', plan_entry_id: 'pe-118-2', quarter_id: 'Q3', target: 0, budget: 107_500, approval_status: 'Approved' },
+  { id: 'qp-pe-118-2-Q4', plan_entry_id: 'pe-118-2', quarter_id: 'Q4', target: 1, budget: 107_500, approval_status: 'Approved' },
 
-  { id: 'qp-pe-118-3-Q1', plan_entry_id: 'pe-118-3', quarter_id: 'Q1', target: 8, budget: 250_000 },
-  { id: 'qp-pe-118-3-Q2', plan_entry_id: 'pe-118-3', quarter_id: 'Q2', target: 8, budget: 250_000 },
-  { id: 'qp-pe-118-3-Q3', plan_entry_id: 'pe-118-3', quarter_id: 'Q3', target: 8, budget: 250_000 },
-  { id: 'qp-pe-118-3-Q4', plan_entry_id: 'pe-118-3', quarter_id: 'Q4', target: 11, budget: 250_000 },
+  { id: 'qp-pe-118-3-Q1', plan_entry_id: 'pe-118-3', quarter_id: 'Q1', target: 8, budget: 250_000, approval_status: 'Approved' },
+  { id: 'qp-pe-118-3-Q2', plan_entry_id: 'pe-118-3', quarter_id: 'Q2', target: 8, budget: 250_000, approval_status: 'Approved' },
+  { id: 'qp-pe-118-3-Q3', plan_entry_id: 'pe-118-3', quarter_id: 'Q3', target: 8, budget: 250_000, approval_status: 'Approved' },
+  { id: 'qp-pe-118-3-Q4', plan_entry_id: 'pe-118-3', quarter_id: 'Q4', target: 11, budget: 250_000, approval_status: 'Approved' },
 
-  { id: 'qp-pe-118-4-Q1', plan_entry_id: 'pe-118-4', quarter_id: 'Q1', target: 10, budget: 250_000 },
-  { id: 'qp-pe-118-4-Q2', plan_entry_id: 'pe-118-4', quarter_id: 'Q2', target: 10, budget: 250_000 },
-  { id: 'qp-pe-118-4-Q3', plan_entry_id: 'pe-118-4', quarter_id: 'Q3', target: 10, budget: 250_000 },
-  { id: 'qp-pe-118-4-Q4', plan_entry_id: 'pe-118-4', quarter_id: 'Q4', target: 10, budget: 250_000 },
+  { id: 'qp-pe-118-4-Q1', plan_entry_id: 'pe-118-4', quarter_id: 'Q1', target: 10, budget: 250_000, approval_status: 'Approved' },
+  { id: 'qp-pe-118-4-Q2', plan_entry_id: 'pe-118-4', quarter_id: 'Q2', target: 10, budget: 250_000, approval_status: 'Approved' },
+  { id: 'qp-pe-118-4-Q3', plan_entry_id: 'pe-118-4', quarter_id: 'Q3', target: 10, budget: 250_000, approval_status: 'Approved' },
+  { id: 'qp-pe-118-4-Q4', plan_entry_id: 'pe-118-4', quarter_id: 'Q4', target: 10, budget: 250_000, approval_status: 'Approved' },
 
-  { id: 'qp-pe-118-5-Q1', plan_entry_id: 'pe-118-5', quarter_id: 'Q1', target: 7, budget: 200_000 },
-  { id: 'qp-pe-118-5-Q2', plan_entry_id: 'pe-118-5', quarter_id: 'Q2', target: 7, budget: 200_000 },
-  { id: 'qp-pe-118-5-Q3', plan_entry_id: 'pe-118-5', quarter_id: 'Q3', target: 7, budget: 200_000 },
-  { id: 'qp-pe-118-5-Q4', plan_entry_id: 'pe-118-5', quarter_id: 'Q4', target: 9, budget: 200_000 },
+  { id: 'qp-pe-118-5-Q1', plan_entry_id: 'pe-118-5', quarter_id: 'Q1', target: 7, budget: 200_000, approval_status: 'Approved' },
+  { id: 'qp-pe-118-5-Q2', plan_entry_id: 'pe-118-5', quarter_id: 'Q2', target: 7, budget: 200_000, approval_status: 'Approved' },
+  { id: 'qp-pe-118-5-Q3', plan_entry_id: 'pe-118-5', quarter_id: 'Q3', target: 7, budget: 200_000, approval_status: 'Approved' },
+  { id: 'qp-pe-118-5-Q4', plan_entry_id: 'pe-118-5', quarter_id: 'Q4', target: 9, budget: 200_000, approval_status: 'Approved' },
 
   // Activity 1.2.1
-  { id: 'qp-pe-121-1-Q1', plan_entry_id: 'pe-121-1', quarter_id: 'Q1', target: 125, budget: 650_000 },
-  { id: 'qp-pe-121-1-Q2', plan_entry_id: 'pe-121-1', quarter_id: 'Q2', target: 125, budget: 650_000 },
-  { id: 'qp-pe-121-1-Q3', plan_entry_id: 'pe-121-1', quarter_id: 'Q3', target: 125, budget: 650_000 },
-  { id: 'qp-pe-121-1-Q4', plan_entry_id: 'pe-121-1', quarter_id: 'Q4', target: 125, budget: 650_000 },
+  { id: 'qp-pe-121-1-Q1', plan_entry_id: 'pe-121-1', quarter_id: 'Q1', target: 125, budget: 650_000, approval_status: 'Approved' },
+  { id: 'qp-pe-121-1-Q2', plan_entry_id: 'pe-121-1', quarter_id: 'Q2', target: 125, budget: 650_000, approval_status: 'Approved' },
+  { id: 'qp-pe-121-1-Q3', plan_entry_id: 'pe-121-1', quarter_id: 'Q3', target: 125, budget: 650_000, approval_status: 'Approved' },
+  { id: 'qp-pe-121-1-Q4', plan_entry_id: 'pe-121-1', quarter_id: 'Q4', target: 125, budget: 650_000, approval_status: 'Approved' },
 
-  { id: 'qp-pe-121-2-Q1', plan_entry_id: 'pe-121-2', quarter_id: 'Q1', target: 75, budget: 390_000 },
-  { id: 'qp-pe-121-2-Q2', plan_entry_id: 'pe-121-2', quarter_id: 'Q2', target: 75, budget: 390_000 },
-  { id: 'qp-pe-121-2-Q3', plan_entry_id: 'pe-121-2', quarter_id: 'Q3', target: 75, budget: 390_000 },
-  { id: 'qp-pe-121-2-Q4', plan_entry_id: 'pe-121-2', quarter_id: 'Q4', target: 75, budget: 390_000 },
+  { id: 'qp-pe-121-2-Q1', plan_entry_id: 'pe-121-2', quarter_id: 'Q1', target: 75, budget: 390_000, approval_status: 'Approved' },
+  { id: 'qp-pe-121-2-Q2', plan_entry_id: 'pe-121-2', quarter_id: 'Q2', target: 75, budget: 390_000, approval_status: 'Approved' },
+  { id: 'qp-pe-121-2-Q3', plan_entry_id: 'pe-121-2', quarter_id: 'Q3', target: 75, budget: 390_000, approval_status: 'Approved' },
+  { id: 'qp-pe-121-2-Q4', plan_entry_id: 'pe-121-2', quarter_id: 'Q4', target: 75, budget: 390_000, approval_status: 'Approved' },
 
-  { id: 'qp-pe-121-3-Q1', plan_entry_id: 'pe-121-3', quarter_id: 'Q1', target: 50, budget: 260_000 },
-  { id: 'qp-pe-121-3-Q2', plan_entry_id: 'pe-121-3', quarter_id: 'Q2', target: 50, budget: 260_000 },
-  { id: 'qp-pe-121-3-Q3', plan_entry_id: 'pe-121-3', quarter_id: 'Q3', target: 50, budget: 260_000 },
-  { id: 'qp-pe-121-3-Q4', plan_entry_id: 'pe-121-3', quarter_id: 'Q4', target: 50, budget: 260_000 },
+  { id: 'qp-pe-121-3-Q1', plan_entry_id: 'pe-121-3', quarter_id: 'Q1', target: 50, budget: 260_000, approval_status: 'Approved' },
+  { id: 'qp-pe-121-3-Q2', plan_entry_id: 'pe-121-3', quarter_id: 'Q2', target: 50, budget: 260_000, approval_status: 'Approved' },
+  { id: 'qp-pe-121-3-Q3', plan_entry_id: 'pe-121-3', quarter_id: 'Q3', target: 50, budget: 260_000, approval_status: 'Approved' },
+  { id: 'qp-pe-121-3-Q4', plan_entry_id: 'pe-121-3', quarter_id: 'Q4', target: 50, budget: 260_000, approval_status: 'Approved' },
 ];
 
 export const INITIAL_QUARTERLY_ACTUALS: QuarterlyActual[] = [
-  { id: 'qa-1', plan_entry_id: 'pe-121-1', quarter_id: 'Q1', actual: 150, expenditure: 800_000, comment: 'Initial Q1 distribution completed in targeted communities.' },
+  { id: 'qa-1', plan_entry_id: 'pe-121-1', quarter_id: 'Q1', actual: 150, expenditure: 800_000, comment: 'Initial Q1 distribution completed in targeted communities.', approval_status: 'Approved' },
 ];
 
 // The Conversion table: this is the one multiplier that turns raw "Actual" units

@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { BudgetStatusBadge } from '../components/common/BudgetStatusBadge';
+import { ApprovalStatusBadge } from '../components/common/ApprovalStatusBadge';
 import {
   sumTarget,
   sumPlannedTarget,
@@ -15,12 +16,14 @@ import {
   convertToBeneficiaries,
   getStatusBadge,
   getBudgetStatusBadge,
+  filterByApprovalStatus,
 } from '../utils/calculations';
 import {
   PlanEntry,
   NationalActivity,
   Region,
   Project,
+  QuarterlyPlan,
   QuarterlyActual,
   QuarterId,
 } from '../types';
@@ -57,13 +60,19 @@ export const ReportPage: React.FC = () => {
 
   const roleFilteredEntries = getFilteredPlanEntries();
 
-  const filteredEntries = roleFilteredEntries.filter(
-    pe =>
-      reportApprovalStatus === 'ALL' ||
-      (reportApprovalStatus === 'Approved'
-        ? pe.approval_status === 'Approved'
-        : pe.approval_status !== 'Approved')
-  );
+  // Plan-Entry-level filtering — unchanged from before.
+  const filteredEntries = filterByApprovalStatus(roleFilteredEntries, reportApprovalStatus);
+
+  // Quarterly-level filtering — NEW. A Plan Entry being Approved does not by
+  // itself mean any of its quarters are Approved: each Quarterly Plan and
+  // each Quarterly Actual has its own independent approval status. The
+  // "Approved" report must only count quarters that are themselves
+  // Approved; the "Draft" report shows everything not yet Approved. Every
+  // aggregate below (KPIs, chart, execution table, breakdown tables) reads
+  // from these filtered arrays instead of the raw context ones, so totals
+  // stay reconciled with what's actually "live" in the selected view.
+  const filteredQuarterlyPlans = filterByApprovalStatus(quarterlyPlans, reportApprovalStatus);
+  const filteredQuarterlyActuals = filterByApprovalStatus(quarterlyActuals, reportApprovalStatus);
 
   const q = filters.quarterId;
 
@@ -94,7 +103,7 @@ export const ReportPage: React.FC = () => {
         n => n.id === e.national_activity_id
       );
 
-      const actual = sumActual([e], quarterlyActuals, q);
+      const actual = sumActual([e], filteredQuarterlyActuals, q);
 
       return (
         sum +
@@ -111,13 +120,13 @@ export const ReportPage: React.FC = () => {
   // quarter's Quarterly Plan instead of the full annual figure.
   const target = sumPlannedTarget(
     filteredEntries,
-    quarterlyPlans,
+    filteredQuarterlyPlans,
     q
   );
 
   const actual = sumActual(
     filteredEntries,
-    quarterlyActuals,
+    filteredQuarterlyActuals,
     q
   );
 
@@ -128,13 +137,13 @@ export const ReportPage: React.FC = () => {
 
   const budget = sumPlannedBudget(
     filteredEntries,
-    quarterlyPlans,
+    filteredQuarterlyPlans,
     q
   );
 
   const spent = sumExpenditure(
     filteredEntries,
-    quarterlyActuals,
+    filteredQuarterlyActuals,
     q
   );
 
@@ -147,13 +156,14 @@ export const ReportPage: React.FC = () => {
     filteredEntries
   );
 
-  // How many entries in scope have no Quarterly Plan set for the
-  // selected quarter.
+  // How many entries in scope have no Quarterly Plan set for the selected
+  // quarter — within the current report view (e.g. in the "Approved" view,
+  // this counts entries with no APPROVED Quarterly Plan for that quarter).
   const missingQuarterlyPlanCount =
     q && q !== 'ALL'
       ? filteredEntries.filter(
           e =>
-            !quarterlyPlans.some(
+            !filteredQuarterlyPlans.some(
               qp =>
                 qp.plan_entry_id === e.id &&
                 qp.quarter_id === q
@@ -182,25 +192,25 @@ export const ReportPage: React.FC = () => {
 
       const t = sumPlannedTarget(
         es,
-        quarterlyPlans,
+        filteredQuarterlyPlans,
         q
       );
 
       const a = sumActual(
         es,
-        quarterlyActuals,
+        filteredQuarterlyActuals,
         q
       );
 
       const b = sumPlannedBudget(
         es,
-        quarterlyPlans,
+        filteredQuarterlyPlans,
         q
       );
 
       const x = sumExpenditure(
         es,
-        quarterlyActuals,
+        filteredQuarterlyActuals,
         q
       );
 
@@ -236,25 +246,25 @@ export const ReportPage: React.FC = () => {
 
       const t = sumPlannedTarget(
         es,
-        quarterlyPlans,
+        filteredQuarterlyPlans,
         q
       );
 
       const a = sumActual(
         es,
-        quarterlyActuals,
+        filteredQuarterlyActuals,
         q
       );
 
       const b = sumPlannedBudget(
         es,
-        quarterlyPlans,
+        filteredQuarterlyPlans,
         q
       );
 
       const x = sumExpenditure(
         es,
-        quarterlyActuals,
+        filteredQuarterlyActuals,
         q
       );
 
@@ -300,25 +310,25 @@ export const ReportPage: React.FC = () => {
 
       const t = sumPlannedTarget(
         es,
-        quarterlyPlans,
+        filteredQuarterlyPlans,
         q
       );
 
       const a = sumActual(
         es,
-        quarterlyActuals,
+        filteredQuarterlyActuals,
         q
       );
 
       const b = sumPlannedBudget(
         es,
-        quarterlyPlans,
+        filteredQuarterlyPlans,
         q
       );
 
       const x = sumExpenditure(
         es,
-        quarterlyActuals,
+        filteredQuarterlyActuals,
         q
       );
 
@@ -353,25 +363,25 @@ export const ReportPage: React.FC = () => {
 
       const t = sumPlannedTarget(
         es,
-        quarterlyPlans,
+        filteredQuarterlyPlans,
         q
       );
 
       const a = sumActual(
         es,
-        quarterlyActuals,
+        filteredQuarterlyActuals,
         q
       );
 
       const b = sumPlannedBudget(
         es,
-        quarterlyPlans,
+        filteredQuarterlyPlans,
         q
       );
 
       const x = sumExpenditure(
         es,
-        quarterlyActuals,
+        filteredQuarterlyActuals,
         q
       );
 
@@ -410,7 +420,7 @@ export const ReportPage: React.FC = () => {
 
           const plannedTarget =
             q && q !== 'ALL'
-              ? quarterlyPlans.find(
+              ? filteredQuarterlyPlans.find(
                   qp =>
                     qp.plan_entry_id === e.id &&
                     qp.quarter_id === q
@@ -422,7 +432,7 @@ export const ReportPage: React.FC = () => {
             Target: plannedTarget,
             Actual: sumActual(
               [e],
-              quarterlyActuals,
+              filteredQuarterlyActuals,
               q
             ),
           };
@@ -447,7 +457,10 @@ export const ReportPage: React.FC = () => {
         <p className="text-xs text-slate-500 mt-1">
           Everything below is derived live from the
           Plan, Quarterly Plan and Quarterly Actual
-          Entry pages. When a specific quarter is
+          Entry pages. Each level — the Plan Entry itself, and each
+          quarter's Plan and Actual — has its own approval status; the
+          Approved view below only counts rows that are themselves
+          Approved, quarter by quarter. When a specific quarter is
           selected, Achievement and Budget Utilization
           compare against that quarter's Quarterly Plan
           rather than the full annual target — otherwise
@@ -471,10 +484,10 @@ export const ReportPage: React.FC = () => {
       >
         {reportApprovalStatus ===
         'Approved'
-          ? 'Only National AOP-approved execution entries are included in this live report.'
+          ? 'Only entries and quarterly submissions Approved by the National Activity AOP are included here — the Plan Entry AND the specific Quarterly Plan / Quarterly Actual for the selected quarter must each be Approved to count.'
           : reportApprovalStatus === 'Draft'
-          ? 'Draft view includes all entries that are not yet approved, including Pending Approval and Rejected proposals.'
-          : 'All view includes approved and non-approved execution entries.'}
+          ? 'Draft view includes everything not yet Approved — Plan Entries, Quarterly Plans and Quarterly Actuals that are still Draft, Pending Approval or Rejected.'
+          : 'All view includes every execution entry and quarterly submission regardless of approval status.'}
       </div>
 
       {/* ------------------------------------------------------------------ */}
@@ -581,9 +594,11 @@ export const ReportPage: React.FC = () => {
         regions={regions}
         projects={projects}
         quarterlyActuals={
-          quarterlyActuals
+          filteredQuarterlyActuals
         }
-        quarterlyPlans={quarterlyPlans}
+        quarterlyPlans={filteredQuarterlyPlans}
+        rawQuarterlyPlans={quarterlyPlans}
+        rawQuarterlyActuals={quarterlyActuals}
         quarterId={q}
       />
 
@@ -652,7 +667,7 @@ const KPICard = ({
 // ACHIEVEMENT KPI
 // ===========================================================================
 
-const ACHIEVEMENT_TONE: Record<
+const ACHIEVEMENT_TONE: Record
   string,
   string
 > = {
@@ -739,8 +754,8 @@ const AchievementKPICard: React.FC<{
             ? 'entry has'
             : 'entries have'}{' '}
           no {quarterId} Quarterly Plan
-          set — counted as 0 planned in
-          this comparison.
+          counted in this view — counted as 0
+          planned in this comparison.
         </div>
       )}
     </div>
@@ -751,7 +766,7 @@ const AchievementKPICard: React.FC<{
 // BUDGET KPI
 // ===========================================================================
 
-const BUDGET_TONE: Record<
+const BUDGET_TONE: Record
   string,
   string
 > = {
@@ -820,12 +835,14 @@ const ExecutionEntriesTable: React.FC<{
   nationalActivities: NationalActivity[];
   regions: Region[];
   projects: Project[];
-  quarterlyActuals: QuarterlyActual[];
+  quarterlyActuals: QuarterlyActual[]; // status-filtered — drives Actual/Spent
   quarterlyPlans: {
     plan_entry_id: string;
     quarter_id: QuarterId;
     target: number;
-  }[];
+  }[]; // status-filtered — drives Target when a quarter is selected
+  rawQuarterlyPlans: QuarterlyPlan[]; // unfiltered — used only for the approval-status column
+  rawQuarterlyActuals: QuarterlyActual[]; // unfiltered — used only for the approval-status column
   quarterId: string;
 }> = ({
   entries,
@@ -834,179 +851,100 @@ const ExecutionEntriesTable: React.FC<{
   projects,
   quarterlyActuals,
   quarterlyPlans,
+  rawQuarterlyPlans,
+  rawQuarterlyActuals,
   quarterId,
-}) => (
-  <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-    <div className="p-4 border-b bg-slate-50 text-xs font-bold text-slate-800 uppercase tracking-wider">
-      Execution Plan Entries ({entries.length})
-    </div>
+}) => {
+  // Shows the CURRENT approval status regardless of which report view is
+  // active, so a Coordinator/AOP can always see what's actually pending —
+  // even while looking at the Draft view where the numbers themselves read
+  // as 0 for anything already Approved.
+  const quarterApprovalCell = (pe: PlanEntry): React.ReactNode => {
+    if (quarterId && quarterId !== 'ALL') {
+      const qa = rawQuarterlyActuals.find(a => a.plan_entry_id === pe.id && a.quarter_id === quarterId);
+      const qp = rawQuarterlyPlans.find(p => p.plan_entry_id === pe.id && p.quarter_id === quarterId);
+      const status = qa?.approval_status || qp?.approval_status;
+      return status ? <ApprovalStatusBadge status={status} /> : <span className="text-slate-300">—</span>;
+    }
+    const totalQuarters = rawQuarterlyActuals.filter(a => a.plan_entry_id === pe.id).length;
+    const approvedQuarters = rawQuarterlyActuals.filter(a => a.plan_entry_id === pe.id && a.approval_status === 'Approved').length;
+    return <span className="text-[10px] font-bold text-slate-600">{approvedQuarters}/{totalQuarters || 4} Approved</span>;
+  };
 
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-xs">
-        <thead className="bg-slate-50 text-slate-600 font-bold uppercase border-b">
-          <tr>
-            <th className="p-3">
-              Activity Code
-            </th>
+  return (
+    <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+      <div className="p-4 border-b bg-slate-50 text-xs font-bold text-slate-800 uppercase tracking-wider">
+        Execution Plan Entries ({entries.length})
+      </div>
 
-            <th className="p-3">
-              Activity Description
-            </th>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 text-slate-600 font-bold uppercase border-b">
+            <tr>
+              <th className="p-3">Activity Code</th>
+              <th className="p-3">Activity Description</th>
+              <th className="p-3">Executed By</th>
+              <th className="p-3 text-right">Target</th>
+              <th className="p-3 text-right">Actual</th>
+              <th className="p-3 text-right">Spent</th>
+              <th className="p-3 text-center">Approval Status</th>
+              <th className="p-3 text-center">Quarterly Actual Status</th>
+            </tr>
+          </thead>
 
-            <th className="p-3">
-              Executed By
-            </th>
+          <tbody className="divide-y">
+            {entries.map(pe => {
+              const na = nationalActivities.find(n => n.id === pe.national_activity_id);
 
-            <th className="p-3 text-right">
-              Target
-            </th>
+              const scopeName = pe.scope_type === 'Regional'
+                ? regions.find(r => r.id === pe.region_id)?.name
+                : projects.find(p => p.id === pe.project_id)?.name;
 
-            <th className="p-3 text-right">
-              Actual
-            </th>
+              const actual = sumActual([pe], quarterlyActuals, quarterId);
+              const spent = sumExpenditure([pe], quarterlyActuals, quarterId);
 
-            <th className="p-3 text-right">
-              Spent
-            </th>
-
-            <th className="p-3 text-center">
-              Approval Status
-            </th>
-          </tr>
-        </thead>
-
-        <tbody className="divide-y">
-          {entries.map(pe => {
-            const na =
-              nationalActivities.find(
-                n =>
-                  n.id ===
-                  pe.national_activity_id
-              );
-
-            const scopeName =
-              pe.scope_type === 'Regional'
-                ? regions.find(
-                    r =>
-                      r.id ===
-                      pe.region_id
-                  )?.name
-                : projects.find(
-                    p =>
-                      p.id ===
-                      pe.project_id
-                  )?.name;
-
-            const actual = sumActual(
-              [pe],
-              quarterlyActuals,
-              quarterId
-            );
-
-            const spent =
-              sumExpenditure(
-                [pe],
-                quarterlyActuals,
-                quarterId
-              );
-
-            const target =
-              quarterId &&
-              quarterId !== 'ALL'
-                ? quarterlyPlans.find(
-                    qp =>
-                      qp.plan_entry_id ===
-                        pe.id &&
-                      qp.quarter_id ===
-                        quarterId
-                  )?.target || 0
+              const target = quarterId && quarterId !== 'ALL'
+                ? quarterlyPlans.find(qp => qp.plan_entry_id === pe.id && qp.quarter_id === quarterId)?.target || 0
                 : pe.annual_target;
 
-            return (
-              <tr
-                key={pe.id}
-                className="hover:bg-slate-50"
-              >
-                <td className="p-3 font-bold text-ercs-red">
-                  {pe.activity_code}
-                </td>
+              return (
+                <tr key={pe.id} className="hover:bg-slate-50">
+                  <td className="p-3 font-bold text-ercs-red">{pe.activity_code}</td>
 
-                <td className="p-3 min-w-80">
-                  <div className="font-bold text-slate-800">
-                    {pe.activity_name}
-                  </div>
+                  <td className="p-3 min-w-80">
+                    <div className="font-bold text-slate-800">{pe.activity_name}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{pe.activity_description}</div>
+                    <div className="text-[9px] text-slate-400 mt-1">Parent: {na?.code}</div>
+                  </td>
 
-                  <div className="text-[10px] text-slate-500 mt-0.5">
-                    {
-                      pe.activity_description
-                    }
-                  </div>
+                  <td className="p-3">
+                    <span className="font-semibold">{scopeName || '—'}</span>
+                    <div className="text-[10px] text-slate-400">{pe.scope_type}</div>
+                  </td>
 
-                  <div className="text-[9px] text-slate-400 mt-1">
-                    Parent: {na?.code}
-                  </div>
-                </td>
+                  <td className="p-3 text-right font-bold">{target.toLocaleString()} {na?.uom}</td>
+                  <td className="p-3 text-right">{actual.toLocaleString()} {na?.uom}</td>
+                  <td className="p-3 text-right">ETB {spent.toLocaleString()}</td>
 
-                <td className="p-3">
-                  <span className="font-semibold">
-                    {scopeName || '—'}
-                  </span>
+                  <td className="p-3 text-center"><ApprovalStatusBadge status={pe.approval_status} /></td>
+                  <td className="p-3 text-center">{quarterApprovalCell(pe)}</td>
+                </tr>
+              );
+            })}
 
-                  <div className="text-[10px] text-slate-400">
-                    {pe.scope_type}
-                  </div>
-                </td>
-
-                <td className="p-3 text-right font-bold">
-                  {target.toLocaleString()}{' '}
-                  {na?.uom}
-                </td>
-
-                <td className="p-3 text-right">
-                  {actual.toLocaleString()}{' '}
-                  {na?.uom}
-                </td>
-
-                <td className="p-3 text-right">
-                  ETB {spent.toLocaleString()}
-                </td>
-
-                <td className="p-3 text-center">
-                  <span
-                    className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-bold ${
-                      pe.approval_status ===
-                      'Approved'
-                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                        : pe.approval_status ===
-                          'Pending Approval'
-                        ? 'bg-amber-100 text-amber-800 border-amber-300'
-                        : 'bg-slate-100 text-slate-700 border-slate-300'
-                    }`}
-                  >
-                    {pe.approval_status}
-                  </span>
+            {entries.length === 0 && (
+              <tr>
+                <td colSpan={8} className="p-6 text-center text-slate-500">
+                  No execution entries are available for this report status and filter.
                 </td>
               </tr>
-            );
-          })}
-
-          {entries.length === 0 && (
-            <tr>
-              <td
-                colSpan={7}
-                className="p-6 text-center text-slate-500"
-              >
-                No execution entries are
-                available for this report
-                status and filter.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ===========================================================================
 // REPORT TABLE

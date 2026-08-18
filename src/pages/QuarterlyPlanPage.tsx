@@ -5,11 +5,18 @@
 // does NOT overwrite the Plan Entry's own annual figure (see the
 // QuarterlyPlan type comment in types/index.ts) — instead each row shows a
 // reconciliation badge if the quarters don't sum to it yet.
+//
+// Each quarter cell also carries its OWN approval workflow: typing a value
+// saves it as Draft; "Submit for Approval" moves it to Pending; the
+// National Activity AOP approves or rejects it from the Pending Approval
+// page. Once Approved, that quarter's inputs lock — the Coordinator can no
+// longer edit them.
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { FilterBar } from '../components/common/FilterBar';
+import { ApprovalStatusBadge } from '../components/common/ApprovalStatusBadge';
 import { PlanEntry, QuarterId } from '../types';
-import { AlertTriangle, CheckCircle2, Wand2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Lock, Wand2 } from 'lucide-react';
 
 const clampNonNegative = (raw: string): number => {
   const parsed = Number(raw);
@@ -28,6 +35,8 @@ export const QuarterlyPlanPage: React.FC = () => {
           Split each plan entry's annual target and budget across the four quarters. Quarterly Actual Entry
           measures achievement against this — quarter by quarter — instead of the full-year figure. The annual
           target/budget from Step 1 stays fixed; the "Reconciliation" column shows whether your quarters add up to it.
+          Each quarter needs its own approval from the National Activity AOP before it counts in the live Approved
+          report — use "Submit for Approval" once a quarter's numbers are ready. Approved quarters are locked.
         </p>
       </div>
 
@@ -38,14 +47,6 @@ export const QuarterlyPlanPage: React.FC = () => {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-600 font-bold uppercase border-b">
               <tr>
-                {/* FIX: the body renders activity_code and activity_name/description
-                    as two separate <td>s, but this header used to have a single
-                    "National Activity" <th> covering both. That off-by-one caused
-                    every column from Annual Target onward to render under the wrong
-                    header (Annual Target under "Annual Budget", Annual Budget under
-                    "Q1", etc). Splitting this into two headers — matching the same
-                    Activity Code / Activity Description convention used on the Plan,
-                    Pending Approval and Report pages — realigns every column. */}
                 <th className="p-3">Activity Code</th>
                 <th className="p-3">Activity Description</th>
                 <th className="p-3">Executed By</th>
@@ -75,7 +76,7 @@ export const QuarterlyPlanPage: React.FC = () => {
 };
 
 const QuarterlyPlanRow: React.FC<{ entry: PlanEntry }> = ({ entry }) => {
-  const { nationalActivities, regions, projects, quarters, quarterlyPlans, upsertQuarterlyPlan } = useApp();
+  const { nationalActivities, regions, projects, quarters, quarterlyPlans, upsertQuarterlyPlan, submitQuarterlyPlan } = useApp();
   const na = nationalActivities.find(n => n.id === entry.national_activity_id);
   const scopeName = entry.scope_type === 'Regional'
     ? regions.find(r => r.id === entry.region_id)?.name
@@ -89,6 +90,7 @@ const QuarterlyPlanRow: React.FC<{ entry: PlanEntry }> = ({ entry }) => {
 
   const setQuarterField = (quarterId: QuarterId, field: 'target' | 'budget', raw: string) => {
     const existing = quarterlyPlans.find(qp => qp.plan_entry_id === entry.id && qp.quarter_id === quarterId);
+    if (existing?.approval_status === 'Approved') return; // defensive — inputs are disabled for this case anyway
     const value = clampNonNegative(raw);
     upsertQuarterlyPlan({
       id: existing?.id || `qp-${entry.id}-${quarterId}`,
@@ -102,6 +104,7 @@ const QuarterlyPlanRow: React.FC<{ entry: PlanEntry }> = ({ entry }) => {
   // Convenience action: divide the annual target/budget evenly across the
   // four quarters (remainder folded into Q4) so the row starts reconciled,
   // and the user just fine-tunes from there instead of typing from scratch.
+  // Skips any quarter that's already Approved and locked.
   const splitEvenly = () => {
     const baseTarget = Math.floor(entry.annual_target / 4);
     const remainderTarget = entry.annual_target - baseTarget * 4;
@@ -109,6 +112,7 @@ const QuarterlyPlanRow: React.FC<{ entry: PlanEntry }> = ({ entry }) => {
     const remainderBudget = entry.annual_budget - baseBudget * 4;
     quarters.forEach((q, idx) => {
       const existing = quarterlyPlans.find(qp => qp.plan_entry_id === entry.id && qp.quarter_id === q.id);
+      if (existing?.approval_status === 'Approved') return;
       const isLast = idx === quarters.length - 1;
       upsertQuarterlyPlan({
         id: existing?.id || `qp-${entry.id}-${q.id}`,
@@ -132,23 +136,42 @@ const QuarterlyPlanRow: React.FC<{ entry: PlanEntry }> = ({ entry }) => {
       <td className="p-3 text-right whitespace-nowrap">{entry.annual_budget.toLocaleString()}</td>
       {quarters.map((q, idx) => {
         const qp = rowPlans[idx];
+        const isApproved = qp?.approval_status === 'Approved';
+        const canSubmit = !!qp && (qp.approval_status === 'Draft' || qp.approval_status === 'Rejected');
         return (
           <td key={q.id} className="p-2 border-l">
             <div className="flex gap-1 justify-center">
               <input
                 type="number" min="0"
                 value={qp?.target ?? 0}
+                disabled={isApproved}
                 onChange={e => setQuarterField(q.id, 'target', e.target.value)}
                 title={`${q.id} Target`}
-                className="w-14 text-center text-[10px] font-bold border border-slate-200 rounded p-1"
+                className={`w-14 text-center text-[10px] font-bold border border-slate-200 rounded p-1 ${isApproved ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
               />
               <input
                 type="number" min="0"
                 value={qp?.budget ?? 0}
+                disabled={isApproved}
                 onChange={e => setQuarterField(q.id, 'budget', e.target.value)}
                 title={`${q.id} Budget`}
-                className="w-20 text-center text-[10px] font-bold border border-slate-200 rounded p-1"
+                className={`w-20 text-center text-[10px] font-bold border border-slate-200 rounded p-1 ${isApproved ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
               />
+            </div>
+            <div className="mt-1 flex flex-col items-center gap-1">
+              {qp && (
+                isApproved
+                  ? <span className="inline-flex items-center gap-1 text-[9px]"><Lock className="w-2.5 h-2.5 text-emerald-600" /><ApprovalStatusBadge status={qp.approval_status} /></span>
+                  : <ApprovalStatusBadge status={qp.approval_status} />
+              )}
+              {canSubmit && (
+                <button onClick={() => submitQuarterlyPlan(qp!.id)} className="text-[9px] font-bold text-amber-700 hover:text-amber-900 whitespace-nowrap">
+                  Submit for Approval
+                </button>
+              )}
+              {qp?.approval_status === 'Rejected' && qp.rejection_reason && (
+                <span className="text-[8px] text-rose-600 text-center leading-tight max-w-[90px]">{qp.rejection_reason}</span>
+              )}
             </div>
           </td>
         );
