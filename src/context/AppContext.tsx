@@ -64,6 +64,11 @@ interface AppContextType {
   quarterlyPlans: QuarterlyPlan[];
   upsertQuarterlyPlan: (qp: QuarterlyPlanInput) => void;
   submitQuarterlyPlan: (id: string) => void;
+  // Batch submission: submits every Draft/Rejected quarter for a Plan Entry
+  // together, after validating all four quarters exist, each has a Budget
+  // greater than 0, and the total doesn't exceed the Plan Entry's annual
+  // budget. See the implementation below for the full rationale.
+  submitQuarterlyPlanRow: (planEntryId: string) => void;
   approveQuarterlyPlan: (id: string) => void;
   rejectQuarterlyPlan: (id: string, reason?: string) => void;
 
@@ -394,6 +399,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`${qp.quarter_id} Quarterly Plan submitted to the National Activity AOP for approval.`);
   };
 
+  // ---------------------------------------------------------------------
+  // Batch submission for Quarterly Plan: quarters are entered and reviewed
+  // as a set, not one at a time. All FOUR quarters (Q1–Q4) must already
+  // exist for this Plan Entry, and every one of them must carry a Budget
+  // greater than zero — a budget of 0 is treated as "not entered" — before
+  // any of them can move to Pending Approval. Quarters that are already
+  // Approved are left untouched; only the ones still Draft or Rejected are
+  // advanced, so this same action also doubles as "resubmit after a
+  // rejection" once the coordinator fixes the flagged quarter(s).
+  // Also defensively re-checks that the four budgets don't exceed the Plan
+  // Entry's own annual_budget ceiling — the Quarterly Plan page's live
+  // input clamp already prevents this from happening through normal
+  // typing, this is just the last line of defense before anything moves
+  // to Pending Approval.
+  // ---------------------------------------------------------------------
+  const submitQuarterlyPlanRow = (planEntryId: string) => {
+    if (currentRole === 'National Activity AOP') { showToast('National Activity AOP approves or rejects Quarterly Plan submissions; Coordinators submit them.'); return; }
+    const entry = planEntries.find(pe => pe.id === planEntryId);
+    if (!entry) { showToast('Plan entry not found.'); return; }
+
+    const rows = quarters.map(q => quarterlyPlans.find(qp => qp.plan_entry_id === planEntryId && qp.quarter_id === q.id));
+    if (rows.some(qp => !qp)) {
+      showToast('Enter a Target and Budget for all four quarters (Q1–Q4) before submitting for approval.');
+      return;
+    }
+    const definiteRows = rows as QuarterlyPlan[];
+
+    if (definiteRows.some(qp => qp.budget <= 0)) {
+      showToast('Every quarter needs a Budget greater than 0 before this plan entry can be submitted for approval.');
+      return;
+    }
+
+    const totalBudget = definiteRows.reduce((sum, qp) => sum + qp.budget, 0);
+    if (totalBudget > entry.annual_budget) {
+      showToast(`Quarterly budgets total ETB ${totalBudget.toLocaleString()}, which exceeds this plan entry's annual budget of ETB ${entry.annual_budget.toLocaleString()}.`);
+      return;
+    }
+
+    const toSubmit = definiteRows.filter(qp => qp.approval_status === 'Draft' || qp.approval_status === 'Rejected');
+    if (toSubmit.length === 0) {
+      showToast('All four quarters are already submitted or approved.');
+      return;
+    }
+
+    setQuarterlyPlans(prev => prev.map(qp => {
+      if (qp.plan_entry_id !== planEntryId) return qp;
+      if (qp.approval_status !== 'Draft' && qp.approval_status !== 'Rejected') return qp;
+      return { ...qp, approval_status: 'Pending Approval', submitted_at: new Date().toISOString(), rejection_reason: undefined };
+    }));
+    showToast('All four quarters submitted to the National Activity AOP for approval.');
+  };
+
   const approveQuarterlyPlan = (id: string) => {
     if (currentRole !== 'National Activity AOP') { showToast('Only the National Activity AOP can approve Quarterly Plan submissions.'); return; }
     const qp = quarterlyPlans.find(x => x.id === id);
@@ -488,7 +545,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       zones, addZone,
       projects, addProject, quarters,
       planEntries, addPlanEntry, updatePlanEntry, deletePlanEntry, submitPlanEntry, approvePlanEntry, rejectPlanEntry,
-      quarterlyPlans, upsertQuarterlyPlan, submitQuarterlyPlan, approveQuarterlyPlan, rejectQuarterlyPlan,
+      quarterlyPlans, upsertQuarterlyPlan, submitQuarterlyPlan, submitQuarterlyPlanRow, approveQuarterlyPlan, rejectQuarterlyPlan,
       quarterlyActuals, upsertQuarterlyActual, submitQuarterlyActual, approveQuarterlyActual, rejectQuarterlyActual,
       uomConfigs, updateUomFactor,
       filters, setFilters, resetFilters, reportApprovalStatus, setReportApprovalStatus, getFilteredPlanEntries,
